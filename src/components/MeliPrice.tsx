@@ -36,14 +36,38 @@ export const MeliPrice = ({
     setError("");
     setSinResultado(false);
 
-    const { data, error: err } = await supabase.functions.invoke("meli-price", {
-      body: { product_id: productId },
-    });
+    // Igual que images.ts: fetch crudo con el token y nada más. invoke() suma
+    // apikey y x-client-info, y el preflight se cae contra la lista de headers
+    // que las functions declaran.
+    const { data: sesion } = await supabase.auth.getSession();
+    const token = sesion.session?.access_token;
 
-    if (err) {
-      setError(err.message);
+    if (!token) {
+      setError("Sesión vencida. Volvé a entrar.");
+      setBuscando(false);
+      return;
+    }
+
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-price`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ product_id: productId }),
+      }
+    ).catch(() => null);
+
+    const data = res ? await res.json().catch(() => ({})) : null;
+
+    if (!res) {
+      setError("No pudimos contactar al servicio. Revisá tu conexión.");
     } else if (data?.error) {
       setError(data.error);
+    } else if (!res.ok) {
+      setError(`Error ${res.status}`);
     } else if (data?.found === false) {
       setSinResultado(true);
       setDatos({
