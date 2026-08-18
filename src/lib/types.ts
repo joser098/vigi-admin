@@ -20,6 +20,11 @@ export type Product = {
   power_type: string | null;
   is_analogue: boolean;
   details: Record<string, unknown> | null;
+  // Referencia de MercadoLibre, traída a demanda desde el detalle.
+  meli_price: number | null;
+  meli_url: string | null;
+  meli_title: string | null;
+  meli_checked_at: string | null;
   updated_at: string;
 };
 

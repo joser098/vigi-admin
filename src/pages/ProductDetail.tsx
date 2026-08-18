@@ -6,6 +6,7 @@ import { getComision, setComision, comisionMonto, gananciaNeta, margenNeto } fro
 import { galleryUrl, guardarGaleria, type ItemGaleria } from "@/lib/images";
 import { Badge, Loading, ErrorBox, Empty } from "@/components/ui";
 import GalleryEditor from "@/components/GalleryEditor";
+import { MeliPrice } from "../components/MeliPrice";
 import type { Product } from "@/lib/types";
 
 // Lo que el panel puede escribir. Coincide con los GRANT de la base: cost,
@@ -263,6 +264,18 @@ const ProductDetail = () => {
             </Campo>
           </div>
         </Seccion>
+
+        {/* --------------------------- Precio en MELI --------------------------- */}
+        <MeliPrice
+          productId={producto.id}
+          nuestroPrecio={conDescuento}
+          inicial={{
+            meli_price: producto.meli_price,
+            meli_url: producto.meli_url,
+            meli_title: producto.meli_title,
+            meli_checked_at: producto.meli_checked_at,
+          }}
+        />
 
         {/* ------------------------------ Imágenes ------------------------------ */}
         <Seccion titulo="Imágenes" desc="La primera es la que se ve en los listados.">

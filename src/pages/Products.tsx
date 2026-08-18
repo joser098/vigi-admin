@@ -25,7 +25,7 @@ const Products = () => {
       const [p, c] = await Promise.all([
         supabase
           .from("products")
-          .select("id,model,title,provider,category,thumbnail,cost,margin_pct,price_override,price,effective_price,discount,has_promotion,is_active")
+          .select("id,model,title,provider,category,thumbnail,cost,margin_pct,price_override,price,effective_price,discount,has_promotion,is_active,meli_price")
           .order("model"),
         supabase.from("categories").select("name").order("name"),
       ]);
@@ -137,7 +137,12 @@ const Products = () => {
                 const ganancia = gananciaNeta(p.cost, p.effective_price, comision);
 
                 return (
-                  <tr key={p.id} className="transition hover:bg-neutral-50">
+                  <tr
+                    key={p.id}
+                    className={`transition hover:bg-neutral-50 ${
+                      p.is_active ? "" : "bg-neutral-50/60 opacity-60"
+                    }`}
+                  >
                     <td className="td">
                       {p.thumbnail ? (
                         <img src={p.thumbnail} alt="" className="size-8 rounded object-cover" />
@@ -180,6 +185,11 @@ const Products = () => {
                               <Badge tone="red">promo sin descuento</Badge>
                             </span>
                           ))}
+                        {p.meli_price != null && (
+                          <span title="Referencia de MercadoLibre. Se actualiza desde el detalle del producto.">
+                            <Badge tone="amber">MELI {money(p.meli_price)}</Badge>
+                          </span>
+                        )}
                         {!p.is_active && <Badge tone="red">inactivo</Badge>}
                       </div>
                     </td>
