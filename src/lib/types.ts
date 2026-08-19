@@ -40,6 +40,9 @@ export type Order = {
   payment_id: string;
   customer_id: string;
   amount_paid: number;
+  // Snapshot del cupón usado, congelado al crearse la orden.
+  discount: number;
+  coupon_code: string | null;
   status: string;
   ip_address: string | null;
   created_at: string;
@@ -100,6 +103,34 @@ export type CouponRedemption = {
   customer_id: string | null;
   order_id: string | null;
   amount: number;
+  created_at: string;
+  customers?: Pick<Customer, "name" | "last_name" | "email"> | null;
+};
+
+/**
+ * Una orden de pago tal como la guarda la API.
+ *
+ * Las columnas de arriba son las que vale la pena consultar; `raw` es la
+ * respuesta completa del procesador y su forma cambia según cuál sea. Todo lo
+ * que la pantalla necesita leer de ahí pasa por `lib/pagos.ts`, que normaliza
+ * las diferencias entre Mercado Pago y Nave.
+ */
+export type PaymentOrder = {
+  id: string;
+  gateway: "mercadopago" | "nave";
+  gateway_payment_id: string | null;
+  gateway_order_id: string | null;
+  customer_id: string | null;
+  status: string;
+  status_detail: string | null;
+  amount: number | null;
+  payer: Record<string, any> | null;
+  items: any[] | null;
+  payment_method: Record<string, any> | null;
+  transaction_details: Record<string, any> | null;
+  card?: Record<string, any> | null;
+  raw?: Record<string, any> | null;
+  date_approved: string | null;
   created_at: string;
   customers?: Pick<Customer, "name" | "last_name" | "email"> | null;
 };
