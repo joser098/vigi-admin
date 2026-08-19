@@ -1,91 +1,78 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { money, dateTime } from "../lib/format";
+import { meliSearchUrl } from "../lib/meli";
 import { Badge } from "./ui";
 
 type Datos = {
   meli_price: number | null;
   meli_url: string | null;
-  meli_title: string | null;
   meli_checked_at: string | null;
 };
 
 /**
- * Trae el precio de referencia de MercadoLibre para un producto y lo deja
- * guardado.
+ * Precio de referencia de MercadoLibre.
  *
- * Se consulta de a uno y a pedido: el catálogo son más de 500 productos y
- * traerlos todos cada vez sería castigar a MercadoLibre para mirar tres.
+ * No se trae solo: la API de búsqueda de MercadoLibre está cerrada y responde
+ * 403 aun con un token válido, por política de ellos. El botón abre el listado
+ * ya buscado y el precio se carga acá — un clic y un número, en vez de armar la
+ * búsqueda a mano cada vez.
  */
 export const MeliPrice = ({
   productId,
+  model,
+  provider,
   nuestroPrecio,
   inicial,
 }: {
   productId: string;
+  model: string;
+  provider: string | null;
   nuestroPrecio: number | null;
   inicial: Datos;
 }) => {
   const [datos, setDatos] = useState<Datos>(inicial);
-  const [buscando, setBuscando] = useState(false);
+  const [valor, setValor] = useState("");
+  const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
-  const [sinResultado, setSinResultado] = useState(false);
 
-  const buscar = async () => {
-    setBuscando(true);
+  const url = meliSearchUrl(model, provider);
+
+  const guardar = async (precio: number | null) => {
+    setGuardando(true);
     setError("");
-    setSinResultado(false);
 
-    // Igual que images.ts: fetch crudo con el token y nada más. invoke() suma
-    // apikey y x-client-info, y el preflight se cae contra la lista de headers
-    // que las functions declaran.
-    const { data: sesion } = await supabase.auth.getSession();
-    const token = sesion.session?.access_token;
+    const fila = {
+      meli_price: precio,
+      meli_url: precio === null ? null : url,
+      meli_checked_at: precio === null ? null : new Date().toISOString(),
+    };
 
-    if (!token) {
-      setError("Sesión vencida. Volvé a entrar.");
-      setBuscando(false);
+    const { error: err } = await supabase
+      .from("products")
+      .update(fila)
+      .eq("id", productId);
+
+    if (err) {
+      setError(err.message);
+    } else {
+      setDatos(fila);
+      setValor("");
+    }
+
+    setGuardando(false);
+  };
+
+  const confirmar = () => {
+    // Se pega como viene de MercadoLibre: "141.700" o "141700".
+    const limpio = valor.replace(/\./g, "").replace(",", ".").trim();
+    const n = Number(limpio);
+
+    if (!limpio || !Number.isFinite(n) || n <= 0) {
+      setError("Escribí un precio válido.");
       return;
     }
-
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-price`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ product_id: productId }),
-      }
-    ).catch(() => null);
-
-    const data = res ? await res.json().catch(() => ({})) : null;
-
-    if (!res) {
-      setError("No pudimos contactar al servicio. Revisá tu conexión.");
-    } else if (data?.error) {
-      setError(data.error);
-    } else if (!res.ok) {
-      setError(`Error ${res.status}`);
-    } else if (data?.found === false) {
-      setSinResultado(true);
-      setDatos({
-        meli_price: null,
-        meli_url: null,
-        meli_title: null,
-        meli_checked_at: new Date().toISOString(),
-      });
-    } else {
-      setDatos({
-        meli_price: data.meli_price,
-        meli_url: data.meli_url,
-        meli_title: data.meli_title,
-        meli_checked_at: data.meli_checked_at,
-      });
-    }
-
-    setBuscando(false);
+    guardar(n);
   };
 
   // Cuánto más caros o baratos estamos. Es el dato por el que se mira esto.
@@ -96,40 +83,63 @@ export const MeliPrice = ({
 
   return (
     <section className="card p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-sm font-medium">Precio en MercadoLibre</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            La publicación nueva más barata de un vendedor con reputación.
-          </p>
-        </div>
+      <h2 className="text-sm font-medium">Precio en MercadoLibre</h2>
+      <p className="mt-1 text-xs text-neutral-500">
+        Abrí el listado, mirá el más barato que sea nuevo y de un vendedor
+        serio, y cargalo acá.
+      </p>
+
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener"
+        className="btn mt-4 inline-flex w-full items-center justify-center gap-2"
+      >
+        Buscar en MercadoLibre
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+        </svg>
+      </a>
+
+      <div className="mt-3 flex gap-2">
+        <input
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && confirmar()}
+          placeholder={datos.meli_price ? "Actualizar precio" : "Precio en MELI"}
+          inputMode="decimal"
+          className="input flex-1"
+        />
         <button
           type="button"
-          onClick={buscar}
-          disabled={buscando}
+          onClick={confirmar}
+          disabled={guardando || !valor}
           className="btn shrink-0 disabled:opacity-50"
         >
-          {buscando ? "Buscando…" : datos.meli_checked_at ? "Actualizar" : "Buscar precio"}
+          {guardando ? "…" : "Guardar"}
         </button>
       </div>
 
       {error && (
-        <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
         </p>
       )}
 
-      {sinResultado && !error && (
-        <p className="mt-4 text-xs text-neutral-500">
-          No encontramos publicaciones nuevas de vendedores con reputación para
-          este modelo. Puede que se publique con otro nombre.
-        </p>
-      )}
-
-      {datos.meli_price !== null && !sinResultado && (
-        <div className="mt-4">
+      {datos.meli_price !== null ? (
+        <div className="mt-4 border-t border-neutral-100 pt-4">
           <div className="flex flex-wrap items-baseline gap-3">
-            <span className="text-2xl font-medium tabular">
+            <span className="tabular text-2xl font-medium">
               {money(datos.meli_price)}
             </span>
             {diferencia !== null && (
@@ -143,34 +153,23 @@ export const MeliPrice = ({
             )}
           </div>
 
-          {datos.meli_title && (
-            <p className="mt-2 text-xs text-neutral-500">
-              {datos.meli_url ? (
-                <a
-                  href={datos.meli_url}
-                  target="_blank"
-                  rel="noopener"
-                  className="underline hover:text-neutral-800"
-                >
-                  {datos.meli_title}
-                </a>
-              ) : (
-                datos.meli_title
-              )}
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-xs text-neutral-400">
+              Cargado el {dateTime(datos.meli_checked_at)}
             </p>
-          )}
+            <button
+              type="button"
+              onClick={() => guardar(null)}
+              disabled={guardando}
+              className="text-xs text-neutral-400 underline hover:text-neutral-700"
+            >
+              Borrar
+            </button>
+          </div>
         </div>
-      )}
-
-      {datos.meli_checked_at && (
-        <p className="mt-3 text-xs text-neutral-400">
-          Consultado el {dateTime(datos.meli_checked_at)}
-        </p>
-      )}
-
-      {!datos.meli_checked_at && !buscando && !error && (
-        <p className="mt-4 text-xs text-neutral-500">
-          Todavía no lo consultamos para este producto.
+      ) : (
+        <p className="mt-4 border-t border-neutral-100 pt-4 text-xs text-neutral-500">
+          Todavía no cargamos la referencia de este producto.
         </p>
       )}
     </section>

@@ -268,11 +268,12 @@ const ProductDetail = () => {
         {/* --------------------------- Precio en MELI --------------------------- */}
         <MeliPrice
           productId={producto.id}
+          model={producto.model}
+          provider={producto.provider}
           nuestroPrecio={conDescuento}
           inicial={{
             meli_price: producto.meli_price,
             meli_url: producto.meli_url,
-            meli_title: producto.meli_title,
             meli_checked_at: producto.meli_checked_at,
           }}
         />
