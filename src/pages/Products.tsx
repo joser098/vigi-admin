@@ -8,13 +8,67 @@ import type { Product } from "@/lib/types";
 
 const PAGINA = 40;
 
+// Las tres columnas de plata se pueden ordenar. La clave no es el nombre de la
+// columna en la base sino cómo se saca el número de la fila, porque "ganancia
+// neta" no existe en `products`: se calcula con la comisión del panel.
+const ORDENABLES = {
+  cost: (p: Product, _c: number) => p.cost,
+  price: (p: Product, _c: number) => p.effective_price,
+  ganancia: (p: Product, c: number) => gananciaNeta(p.cost, p.effective_price, c),
+} as const;
+
+type Columna = keyof typeof ORDENABLES;
+type Orden = { columna: Columna; dir: "asc" | "desc" } | null;
+
+/**
+ * Encabezado que ordena. Tres estados por columna: primero de mayor a menor
+ * —que es lo que se busca en una columna de plata—, después al revés, y el
+ * tercer clic vuelve al orden por modelo.
+ */
+const ThOrden = ({
+  columna,
+  orden,
+  onOrden,
+  children,
+}: {
+  columna: Columna;
+  orden: Orden;
+  onOrden: (o: Orden) => void;
+  children: React.ReactNode;
+}) => {
+  const activa = orden?.columna === columna;
+
+  const siguiente = (): Orden =>
+    !activa
+      ? { columna, dir: "desc" }
+      : orden!.dir === "desc"
+      ? { columna, dir: "asc" }
+      : null;
+
+  return (
+    <th className="th text-right">
+      <button
+        onClick={() => onOrden(siguiente())}
+        className={`inline-flex items-center gap-1 uppercase tracking-wide transition hover:text-neutral-900 ${
+          activa ? "text-neutral-900" : ""
+        }`}
+      >
+        {children}
+        <span className={activa ? "" : "text-neutral-300"}>
+          {activa ? (orden!.dir === "desc" ? "↓" : "↑") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+};
+
 const Products = () => {
   const [productos, setProductos] = useState<Product[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
   const [busqueda, setBusqueda] = useState("");
   const [categoria, setCategoria] = useState("");
-  const [soloSinFoto, setSoloSinFoto] = useState(false);
   const [soloPromo, setSoloPromo] = useState(false);
+  const [orden, setOrden] = useState<Orden>(null);
   const [visibles, setVisibles] = useState(PAGINA);
   const [comision] = useState(getComision);
   const [cargando, setCargando] = useState(true);
@@ -45,7 +99,6 @@ const Products = () => {
 
     return productos.filter((p) => {
       if (categoria && p.category !== categoria) return false;
-      if (soloSinFoto && p.thumbnail) return false;
       // Lo mismo que muestra la tienda en el carrusel de destacados y en
       // /category/promociones: has_promotion + is_active.
       if (soloPromo && !(p.has_promotion && p.is_active)) return false;
@@ -54,9 +107,33 @@ const Products = () => {
       const texto = `${p.model} ${p.title} ${p.provider ?? ""}`.toLowerCase();
       return terminos.every((t) => texto.includes(t));
     });
-  }, [productos, busqueda, categoria, soloSinFoto, soloPromo]);
+  }, [productos, busqueda, categoria, soloPromo]);
 
-  useEffect(() => setVisibles(PAGINA), [busqueda, categoria, soloSinFoto, soloPromo]);
+  // El orden se aplica sobre lo filtrado, así que ordenar y filtrar se
+  // combinan: "las 40 de mayor ganancia dentro de Kits" es dos clics.
+  //
+  // Los nulos van siempre al final, en cualquiera de las dos direcciones. Un
+  // producto sin costo cargado no es "el más barato": es uno que no sabemos
+  // cuánto cuesta, y arriba de todo solo tapa lo que se está buscando.
+  const ordenados = useMemo(() => {
+    if (!orden) return filtrados;
+
+    const valor = ORDENABLES[orden.columna];
+    const signo = orden.dir === "desc" ? -1 : 1;
+
+    return [...filtrados].sort((a, b) => {
+      const va = valor(a, comision);
+      const vb = valor(b, comision);
+
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+
+      return (va - vb) * signo;
+    });
+  }, [filtrados, orden, comision]);
+
+  useEffect(() => setVisibles(PAGINA), [busqueda, categoria, soloPromo]);
 
   if (cargando) return <Loading />;
 
@@ -65,8 +142,8 @@ const Products = () => {
       <PageTitle
         action={
           <span className="text-sm text-neutral-500">
-            {number(filtrados.length)}
-            {filtrados.length !== productos.length && ` de ${number(productos.length)}`}
+            {number(ordenados.length)}
+            {ordenados.length !== productos.length && ` de ${number(productos.length)}`}
           </span>
         }
       >
@@ -93,15 +170,6 @@ const Products = () => {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-600">
-          <input
-            type="checkbox"
-            checked={soloSinFoto}
-            onChange={(e) => setSoloSinFoto(e.target.checked)}
-            className="size-4 rounded border-neutral-300 text-primary focus:ring-primary/20"
-          />
-          Solo sin foto
-        </label>
         <label
           className="flex cursor-pointer items-center gap-2 text-sm text-neutral-600"
           title="Lo que aparece en el carrusel de destacados y en /category/promociones"
@@ -116,7 +184,7 @@ const Products = () => {
         </label>
       </div>
 
-      {filtrados.length === 0 ? (
+      {ordenados.length === 0 ? (
         <Empty>No hay productos que coincidan.</Empty>
       ) : (
         <div className="card overflow-hidden">
@@ -126,14 +194,21 @@ const Products = () => {
                 <th className="th w-12"></th>
                 <th className="th">Modelo</th>
                 <th className="th">Categoría</th>
-                <th className="th text-right">Costo</th>
-                <th className="th text-right">Precio</th>
-                <th className="th text-right">Ganancia neta</th>
+                <ThOrden columna="cost" orden={orden} onOrden={setOrden}>
+                  Costo
+                </ThOrden>
+                <ThOrden columna="price" orden={orden} onOrden={setOrden}>
+                  Precio
+                </ThOrden>
+                <ThOrden columna="ganancia" orden={orden} onOrden={setOrden}>
+                  Ganancia neta
+                </ThOrden>
+                <th className="th">Visible</th>
                 <th className="th"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              {filtrados.slice(0, visibles).map((p) => {
+              {ordenados.slice(0, visibles).map((p) => {
                 const ganancia = gananciaNeta(p.cost, p.effective_price, comision);
 
                 return (
@@ -176,6 +251,13 @@ const Products = () => {
                       )}
                     </td>
                     <td className="td">
+                      {p.is_active ? (
+                        <Badge tone="green">visible</Badge>
+                      ) : (
+                        <Badge tone="neutral">oculto</Badge>
+                      )}
+                    </td>
+                    <td className="td">
                       <div className="flex justify-end gap-1.5">
                         {p.has_promotion &&
                           (p.discount >= 1 && p.discount <= 50 ? (
@@ -190,7 +272,6 @@ const Products = () => {
                             <Badge tone="amber">MELI {money(p.meli_price)}</Badge>
                           </span>
                         )}
-                        {!p.is_active && <Badge tone="red">inactivo</Badge>}
                       </div>
                     </td>
                   </tr>
@@ -199,10 +280,10 @@ const Products = () => {
             </tbody>
           </table>
 
-          {visibles < filtrados.length && (
+          {visibles < ordenados.length && (
             <div className="border-t border-neutral-100 p-3 text-center">
               <button onClick={() => setVisibles((v) => v + PAGINA)} className="btn-ghost">
-                Ver más ({number(filtrados.length - visibles)} restantes)
+                Ver más ({number(ordenados.length - visibles)} restantes)
               </button>
             </div>
           )}
