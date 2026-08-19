@@ -134,3 +134,26 @@ export type PaymentOrder = {
   created_at: string;
   customers?: Pick<Customer, "name" | "last_name" | "email"> | null;
 };
+
+export type MarketingContact = {
+  id: string;
+  email: string;
+  name: string | null;
+  source: string;
+  is_subscribed: boolean;
+  unsubscribed_at: string | null;
+  created_at: string;
+};
+
+export type MarketingCampaign = {
+  id: string;
+  name: string;
+  subject: string;
+  from_name: string | null;
+  html: string;
+  status: "draft" | "sending" | "sent" | "failed";
+  sent_at: string | null;
+  sent_count: number;
+  failed_count: number;
+  created_at: string;
+};

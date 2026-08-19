@@ -9,6 +9,7 @@ import Products from "@/pages/Products";
 import ProductDetail from "@/pages/ProductDetail";
 import Payments from "@/pages/Payments";
 import PaymentDetail from "@/pages/PaymentDetail";
+import EmailMarketing from "@/pages/EmailMarketing";
 import Coupons from "@/pages/Coupons";
 import CouponDetail from "@/pages/CouponDetail";
 
@@ -39,6 +40,7 @@ const Guard = () => {
         <Route path="pagos" element={<Payments />} />
         <Route path="pagos/:id" element={<PaymentDetail />} />
         <Route path="cupones" element={<Coupons />} />
+        <Route path="email" element={<EmailMarketing />} />
         {/* "nuevo" entra por el mismo detalle: es el mismo formulario
             con y sin fila detrás. */}
         <Route path="cupones/:id" element={<CouponDetail />} />
