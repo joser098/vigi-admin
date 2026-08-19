@@ -55,3 +55,19 @@ pueda crearse cuenta, porque igual no pasaría la whitelist, pero evita ruido.
 - **Detalle de producto** — costo, margen, precio manual, descuento,
   visibilidad e imagen. Muestra el **margen real** y la ganancia en pesos,
   recalculados en vivo mientras editás.
+- **Cupones** — códigos de descuento por porcentaje o monto fijo, con compra
+  mínima, tope en pesos, vigencia y límites de uso (totales y por cliente). El
+  detalle lista los canjes con cliente y monto.
+
+## Cupones
+
+El contador de usos (`coupons.redemptions`) lo mantiene un trigger a partir de
+`coupon_redemptions`, y la base **no deja escribirlo desde el panel**: si se
+pudiera, el límite de usos sería decorativo. Los canjes tampoco se escriben
+desde acá — los crea la API cuando un pago se aprueba.
+
+Un cupón que ya se usó no se puede borrar desde la UI: borrarlo se llevaría
+puesto el historial que explica los descuentos de órdenes viejas. Para sacarlo
+de circulación se apaga (`is_active`), que corta en el acto.
+
+El código es `citext`: `verano25` y `VERANO25` son el mismo cupón.

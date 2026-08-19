@@ -73,3 +73,33 @@ export type OrderStatus = {
   sort_order: number;
   is_terminal: boolean;
 };
+
+// Cupones de descuento. `redemptions` es un contador que mantiene un trigger a
+// partir de coupon_redemptions: la base no deja escribirlo desde el panel.
+export type Coupon = {
+  id: string;
+  code: string;
+  description: string | null;
+  kind: "percentage" | "fixed";
+  value: number;
+  max_discount: number | null;
+  min_purchase: number;
+  max_redemptions: number | null;
+  max_per_customer: number | null;
+  redemptions: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CouponRedemption = {
+  id: string;
+  coupon_id: string;
+  customer_id: string | null;
+  order_id: string | null;
+  amount: number;
+  created_at: string;
+  customers?: Pick<Customer, "name" | "last_name" | "email"> | null;
+};
