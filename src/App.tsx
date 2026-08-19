@@ -7,6 +7,8 @@ import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Products from "@/pages/Products";
 import ProductDetail from "@/pages/ProductDetail";
+import Coupons from "@/pages/Coupons";
+import CouponDetail from "@/pages/CouponDetail";
 
 // El panel entero está detrás del guard. No hay ruta que se pueda alcanzar sin
 // sesión y sin estar en la whitelist — y aunque se pudiera, RLS no devolvería
@@ -32,6 +34,10 @@ const Guard = () => {
         <Route path="ordenes/:id" element={<OrderDetail />} />
         <Route path="productos" element={<Products />} />
         <Route path="productos/:id" element={<ProductDetail />} />
+        <Route path="cupones" element={<Coupons />} />
+        {/* "nuevo" entra por el mismo detalle: es el mismo formulario
+            con y sin fila detrás. */}
+        <Route path="cupones/:id" element={<CouponDetail />} />
         <Route path="*" element={<Dashboard />} />
       </Route>
     </Routes>
