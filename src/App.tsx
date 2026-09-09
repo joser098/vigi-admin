@@ -7,6 +7,7 @@ import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Products from "@/pages/Products";
 import ProductDetail from "@/pages/ProductDetail";
+import ImportPrices from "@/pages/ImportPrices";
 import Payments from "@/pages/Payments";
 import PaymentDetail from "@/pages/PaymentDetail";
 import EmailMarketing from "@/pages/EmailMarketing";
@@ -37,6 +38,7 @@ const Guard = () => {
         <Route path="ordenes/:id" element={<OrderDetail />} />
         <Route path="productos" element={<Products />} />
         <Route path="productos/:id" element={<ProductDetail />} />
+        <Route path="importar" element={<ImportPrices />} />
         <Route path="pagos" element={<Payments />} />
         <Route path="pagos/:id" element={<PaymentDetail />} />
         <Route path="cupones" element={<Coupons />} />
