@@ -58,6 +58,37 @@ pueda crearse cuenta, porque igual no pasaría la whitelist, pero evita ruido.
 - **Cupones** — códigos de descuento por porcentaje o monto fijo, con compra
   mínima, tope en pesos, vigencia y límites de uso (totales y por cliente). El
   detalle lista los canjes con cliente y monto.
+- **Email** — lista de contactos, armador de campañas con plantillas de
+  producto, y el envío por tandas contra Resend.
+
+## Email
+
+Quien manda es la Edge Function `marketing-send` de `vigi-api`, nunca el
+navegador: la API key de Resend no puede estar en el bundle. El panel arma la
+campaña, muestra la preview y aprieta el botón.
+
+**Armar con productos.** Se eligen hasta 8 productos activos con foto, se elige
+una de las tres plantillas (`Grilla`, `Destacado`, `Ofertas`) y sale el HTML
+listo. Las plantillas viven en `src/lib/emailTemplates.ts`; el pie con envío,
+garantía, despacho y medios de pago está ahí y no en cada campaña, con los datos
+reales de la tienda. El precio tachado sale de `has_promotion` y `discount` del
+producto: si no tiene descuento cargado, no aparece — un "antes" inventado es la
+clase de error que hay que deshacer después.
+
+**Envío por tandas.** El plan gratuito de Resend son 100 mails por día, y los
+comparte con los transaccionales de la API. Por eso la lista no sale de una: la
+tanda por defecto son 85, la pantalla muestra cuántos ya la recibieron y cuántos
+faltan, y al día siguiente se aprieta de nuevo. Nadie la recibe dos veces —cada
+envío deja una fila en `marketing_sends` y la tanda siguiente los saltea—, y la
+campaña queda en `sending` hasta que no queda nadie.
+
+**El remitente.** El campo `from_name` es el nombre que se ve en la bandeja. Sin
+él el correo llega firmado con lo que dice la dirección (`marketing`), que no le
+dice nada a nadie.
+
+Contactos y envíos se leen con `traerTodo` de `lib/supabase.ts`: PostgREST corta
+en 1000 filas por respuesta y no avisa, así que con más de mil contactos una
+consulta común devuelve 1000 y parece completa.
 
 ## Cupones
 
