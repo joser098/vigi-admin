@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { money, number } from "@/lib/format";
 import { getComision, gananciaNeta } from "@/lib/comision";
@@ -19,6 +19,21 @@ const ORDENABLES = {
 
 type Columna = keyof typeof ORDENABLES;
 type Orden = { columna: Columna; dir: "asc" | "desc" } | null;
+
+// El orden viaja en la URL como "ganancia:desc". Se valida al leer porque la
+// URL la escribe cualquiera: un parámetro raro tiene que caer en "sin orden",
+// no romper la tabla.
+const escribirOrden = (o: Orden) => (o ? `${o.columna}:${o.dir}` : null);
+
+const leerOrden = (v: string | null): Orden => {
+  if (!v) return null;
+
+  const [columna, dir] = v.split(":");
+  if (!(columna in ORDENABLES)) return null;
+  if (dir !== "asc" && dir !== "desc") return null;
+
+  return { columna: columna as Columna, dir };
+};
 
 /**
  * Encabezado que ordena. Tres estados por columna: primero de mayor a menor
@@ -65,10 +80,39 @@ const ThOrden = ({
 const Products = () => {
   const [productos, setProductos] = useState<Product[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
-  const [busqueda, setBusqueda] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [soloPromo, setSoloPromo] = useState(false);
-  const [orden, setOrden] = useState<Orden>(null);
+  // Los filtros viven en la URL y no en el estado. Así volver del detalle de un
+  // producto con el botón atrás devuelve el listado como estaba —que antes se
+  // perdía y había que filtrar de nuevo cada vez— y además una búsqueda que
+  // usás seguido se puede guardar en favoritos o pasar por chat.
+  const [params, setParams] = useSearchParams();
+
+  const busqueda = params.get("q") ?? "";
+  const categoria = params.get("cat") ?? "";
+  const soloPromo = params.get("promo") === "1";
+  const orden = leerOrden(params.get("orden"));
+
+  // `replace` a propósito: filtrar no es navegar. Sin esto, escribir "ezviz"
+  // deja cinco entradas en el historial y el botón atrás deja de servir para
+  // lo único que importa, que es volver al listado.
+  // Se actualiza a partir del valor anterior y no del `params` capturado en el
+  // render: escribiendo rápido, dos teclas seguidas leerían el mismo estado
+  // viejo y la segunda pisaría a la primera.
+  const setParam = (clave: string, valor: string | null) => {
+    setParams(
+      (anterior) => {
+        const siguiente = new URLSearchParams(anterior);
+        if (valor) siguiente.set(clave, valor);
+        else siguiente.delete(clave);
+        return siguiente;
+      },
+      { replace: true }
+    );
+  };
+
+  const setBusqueda = (v: string) => setParam("q", v);
+  const setCategoria = (v: string) => setParam("cat", v);
+  const setSoloPromo = (v: boolean) => setParam("promo", v ? "1" : null);
+  const setOrden = (o: Orden) => setParam("orden", escribirOrden(o));
   const [visibles, setVisibles] = useState(PAGINA);
   const [comision] = useState(getComision);
   const [cargando, setCargando] = useState(true);
