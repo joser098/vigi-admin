@@ -86,6 +86,23 @@ campaña queda en `sending` hasta que no queda nadie.
 él el correo llega firmado con lo que dice la dirección (`marketing`), que no le
 dice nada a nadie.
 
+**Cómo se sabe si el mail vendió.** Cada campaña se cuelga de un **cupón activo**
+(se elige de una lista, no se escribe: el descuento que promete el mail es el que
+va a aplicar el carrito). El código va grande en el mail y con la instrucción de
+dónde ponerlo, porque el carrito **no lo acepta por URL** — se tipea a mano en
+`OrderResume.tsx`. Eso es justamente lo que lo hace medible: cada fila de
+`coupon_redemptions` con ese código es una venta que empezó en el mail, con su
+`order_id` y su monto, y ya se ve hoy en **Cupones**. Subestima —quien compra sin
+usar el código no cuenta— pero es plata real y no depende de ningún tag.
+
+Todos los links llevan además `utm_source=newsletter&utm_medium=email` más
+`utm_campaign` (la etiqueta de la campaña) y `utm_content` (qué link: el modelo
+del producto, el botón, el logo o el pie). **Hoy no los lee nadie**: en
+`vigi-app` hay GTM y Google Ads pero no GA4, y `orders` no guarda el origen. Van
+igual porque no cuestan nada y el día que se conecte GA4 —o se guarde el origen
+en `orders`— los mails viejos ya vienen etiquetados. El link de baja y el
+`mailto` quedan sin UTM a propósito.
+
 Contactos y envíos se leen con `traerTodo` de `lib/supabase.ts`: PostgREST corta
 en 1000 filas por respuesta y no avisa, así que con más de mil contactos una
 consulta común devuelve 1000 y parece completa.

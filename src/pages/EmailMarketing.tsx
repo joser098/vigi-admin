@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase, traerTodo } from "@/lib/supabase";
-import { number, money, dateTime } from "@/lib/format";
+import { number, money, date, dateTime } from "@/lib/format";
 import { PageTitle, Stat, Badge, Empty, Loading, ErrorBox } from "@/components/ui";
-import { PLANTILLAS, ORDEN_PLANTILLAS, type PlantillaId, type Ajustes } from "@/lib/emailTemplates";
-import type { MarketingCampaign, MarketingContact, Product } from "@/lib/types";
+import {
+  PLANTILLAS,
+  ORDEN_PLANTILLAS,
+  slug,
+  type PlantillaId,
+  type Ajustes,
+} from "@/lib/emailTemplates";
+import type { MarketingCampaign, MarketingContact, Product, Coupon } from "@/lib/types";
+
+// Los campos de `Ajustes` que son texto libre y se editan con un input. El
+// cupón no entra: es una fila de la base, se elige de una lista.
+type CampoTexto = "preheader" | "titulo" | "bajada" | "cta" | "utm";
 
 /**
  * Email marketing.
@@ -56,6 +66,7 @@ const EmailMarketing = () => {
   const [campanas, setCampanas] = useState<MarketingCampaign[]>([]);
   const [contactos, setContactos] = useState<MarketingContact[]>([]);
   const [productos, setProductos] = useState<Product[]>([]);
+  const [cupones, setCupones] = useState<Coupon[]>([]);
   // Emails ya alcanzados por cada campaña que todavía no terminó. Solo de
   // esas: una campaña en "sent" no tiene pendientes por definición, y traer
   // sus envíos sería cargar el historial entero al navegador.
@@ -87,7 +98,7 @@ const EmailMarketing = () => {
 
   const cargar = async () => {
     try {
-      const [c, k, p, n] = await Promise.all([
+      const [c, k, p, n, cu] = await Promise.all([
         supabase.from("marketing_campaigns").select("*").order("created_at", { ascending: false }),
 
         traerTodo<MarketingContact>((desde, hasta) =>
@@ -119,6 +130,11 @@ const EmailMarketing = () => {
           .select("id", { count: "exact", head: true })
           .eq("status", "sent")
           .gte("created_at", medianocheUTC()),
+
+        // Los cupones activos, para poder colgarle uno a la campaña. Es lo
+        // único que después contesta "¿esto vendió?": el código se tipea en el
+        // carrito y cada canje queda en coupon_redemptions con su orden.
+        supabase.from("coupons").select("*").eq("is_active", true).order("code"),
       ]);
 
       if (c.error) throw new Error(c.error.message);
@@ -147,6 +163,7 @@ const EmailMarketing = () => {
       setProductos(p);
       setAlcanzados(mapa);
       setHoy(n.count ?? 0);
+      setCupones((cu.data ?? []) as Coupon[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -297,8 +314,32 @@ const EmailMarketing = () => {
   const cambiarPlantilla = (id: PlantillaId) => {
     setPlantilla(id);
     // Los textos sugeridos son parte de la plantilla: cambiar de plantilla y
-    // quedarse con el título de la anterior deja el mail descolgado.
-    setAjustes(PLANTILLAS[id].sugerido);
+    // quedarse con el título de la anterior deja el mail descolgado. La
+    // etiqueta de campaña y el cupón sí se conservan — no dependen de cómo se
+    // vea el mail, y volver a elegirlos en cada prueba de plantilla es la
+    // clase de paso que se olvida.
+    setAjustes((a) => ({ ...PLANTILLAS[id].sugerido, utm: a.utm, cupon: a.cupon }));
+  };
+
+  const elegirCupon = (id: string) => {
+    const c = cupones.find((x) => x.id === id);
+
+    setAjustes((a) => ({
+      ...a,
+      cupon: c
+        ? {
+            code: c.code,
+            kind: c.kind,
+            value: c.value,
+            min_purchase: c.min_purchase,
+            max_discount: c.max_discount,
+            ends_at: c.ends_at,
+          }
+        : null,
+      // La etiqueta de UTM sigue al cupón: así el corte de Cupones y el de
+      // utm_campaign hablan de lo mismo y se pueden cruzar.
+      utm: c ? slug(c.code) : a.utm,
+    }));
   };
 
   const alternar = (id: string) =>
@@ -335,7 +376,9 @@ const EmailMarketing = () => {
       // El asunto y el nombre interno solo se completan si están vacíos: si ya
       // los escribiste, regenerar el HTML no te los pisa.
       subject: f.subject.trim() || ajustes.titulo,
-      name: f.name.trim() || `${PLANTILLAS[plantilla].nombre} · ${new Date().toLocaleDateString("es-AR")}`,
+      name:
+        f.name.trim() ||
+        `${ajustes.utm} · ${PLANTILLAS[plantilla].nombre} · ${new Date().toLocaleDateString("es-AR")}`,
     }));
     setPruebaHecha(false);
     setTab("campanas");
@@ -896,6 +939,42 @@ const EmailMarketing = () => {
               </div>
             )}
 
+            {/* --- Cómo se mide ------------------------------------------- */}
+            <div className="mt-5 border-t border-neutral-200 pt-5">
+              <label className="label">Cupón de la campaña</label>
+              <select
+                value={cupones.find((c) => c.code === ajustes.cupon?.code)?.id ?? ""}
+                onChange={(e) => elegirCupon(e.target.value)}
+                className="input"
+              >
+                <option value="">Sin cupón — no vas a poder medir las ventas</option>
+                {cupones.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.code} · {c.kind === "percentage" ? `${c.value}%` : money(c.value)} off
+                    {c.ends_at ? ` · hasta ${date(c.ends_at)}` : ""}
+                  </option>
+                ))}
+              </select>
+
+              {cupones.length === 0 ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  No hay cupones activos. Creá uno en <b>Cupones</b> y volvé: es lo único que
+                  después contesta si el mail vendió.
+                </p>
+              ) : ajustes.cupon ? (
+                <p className="mt-1 text-xs text-neutral-500">
+                  El mail muestra el código y dice que va en el carrito. Cada venta con{" "}
+                  <b>{ajustes.cupon.code.toUpperCase()}</b> queda en <b>Cupones</b> con su monto:
+                  ese es el número que dice si conviene pagar Resend.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-neutral-400">
+                  Sin cupón el mail sale igual, pero no hay forma de saber qué ventas trajo. El
+                  descuento además es lo que hace que abran.
+                </p>
+              )}
+            </div>
+
             <div className="mt-5 space-y-3 border-t border-neutral-200 pt-5">
               {(
                 [
@@ -903,7 +982,8 @@ const EmailMarketing = () => {
                   ["bajada", "Bajada", "Una o dos frases debajo del título"],
                   ["cta", "Texto del botón", "Ver el catálogo"],
                   ["preheader", "Vista previa", "Lo que se lee al lado del asunto en la bandeja"],
-                ] as Array<[keyof Ajustes, string, string]>
+                  ["utm", "Etiqueta de campaña", "mail-septiembre"],
+                ] as Array<[CampoTexto, string, string]>
               ).map(([campo, etiqueta, ph]) => (
                 <div key={campo}>
                   <label className="label">{etiqueta}</label>
@@ -922,6 +1002,13 @@ const EmailMarketing = () => {
                       placeholder={ph}
                       className="input"
                     />
+                  )}
+                  {campo === "utm" && (
+                    <p className="mt-1 text-xs text-neutral-400">
+                      Va en <code>utm_campaign</code> de cada link. Hoy la tienda no lee los UTM
+                      —no hay GA4—, así que esto todavía no reporta nada solo; queda etiquetado
+                      para cuando se conecte.
+                    </p>
                   )}
                 </div>
               ))}
