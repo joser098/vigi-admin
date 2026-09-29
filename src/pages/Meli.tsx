@@ -108,10 +108,12 @@ const invocar = async <T,>(body: Record<string, unknown>): Promise<T> => {
 const causasDe = (errors: unknown): string[] => {
   if (!errors || typeof errors !== "object") return [];
   const e = errors as { message?: string; cause?: Array<{ message?: string; code?: string; type?: string }> };
-  const causas = (e.cause ?? [])
-    .filter((c) => c?.type !== "warning")
-    .map((c) => c?.message ?? c?.code ?? "")
-    .filter(Boolean);
+  const todas = e.cause ?? [];
+  const errores = todas.filter((c) => c?.type !== "warning");
+  // Con un 400 que solo trae avisos, los avisos son la única pista.
+  const causas = (errores.length ? errores : todas)
+    .map((c) => (c?.type === "warning" ? "Aviso: " : "") + (c?.message ?? c?.code ?? ""))
+    .filter((x) => x && x !== "Aviso: ");
   return causas.length ? causas : e.message ? [e.message] : [];
 };
 
@@ -123,7 +125,15 @@ const margenPct = (l?: MeliListing) =>
 // ---------------------------------------------------------------------------
 
 type Estado =
-  | { connected: true; user: { id: number; nickname: string; permalink: string; level: string | null } }
+  | {
+      connected: true;
+      user: { id: number; nickname: string; permalink: string; level: string | null };
+      can_list?: boolean | null;
+      list_codes?: string[];
+      can_sell?: boolean | null;
+      sell_codes?: string[];
+      mercadoenvios?: string | null;
+    }
   | { connected: false; auth_url: string | null; error?: string };
 
 const Conexion = ({ estado, onConectar }: { estado: Estado | null; onConectar: () => void }) => {
@@ -140,6 +150,20 @@ const Conexion = ({ estado, onConectar }: { estado: Estado | null; onConectar: (
             </a>
             {estado.user.level && <span className="ml-2 text-neutral-400">reputación {estado.user.level}</span>}
           </p>
+        </div>
+        <div className="text-xs">
+          <p>
+            Puede publicar:{" "}
+            <b className={estado.can_list === false ? "text-red-600" : "text-green-700"}>
+              {estado.can_list === false ? "no" : estado.can_list ? "sí" : "—"}
+            </b>
+            {" · "}Mercado Envíos: <b>{estado.mercadoenvios ?? "—"}</b>
+          </p>
+          {[...(estado.list_codes ?? []), ...(estado.sell_codes ?? [])].length > 0 && (
+            <p className="mt-1 text-red-600">
+              MercadoLibre pide: {[...new Set([...(estado.list_codes ?? []), ...(estado.sell_codes ?? [])])].join(", ")}
+            </p>
+          )}
         </div>
       </div>
     );
