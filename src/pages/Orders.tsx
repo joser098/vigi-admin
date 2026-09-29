@@ -6,7 +6,13 @@ import { PageTitle, Badge, Empty, Loading, ErrorBox } from "@/components/ui";
 import type { Order, OrderStatus } from "@/lib/types";
 
 const tono = (code: string) =>
-  code === "entregado" ? "green" : code === "enviado" ? "violet" : "amber";
+  code === "entregado"
+    ? "green"
+    : code === "enviado"
+      ? "violet"
+      : code === "cancelado" || code === "reembolsado"
+        ? "red"
+        : "amber";
 
 const Orders = () => {
   const [ordenes, setOrdenes] = useState<Order[]>([]);
