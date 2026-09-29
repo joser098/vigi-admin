@@ -9,6 +9,7 @@ const links = [
   { to: "/pagos", label: "Pagos" },
   { to: "/cupones", label: "Cupones" },
   { to: "/email", label: "Email" },
+  { to: "/meli", label: "MercadoLibre" },
 ];
 
 const Layout = () => {

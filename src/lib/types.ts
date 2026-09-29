@@ -157,3 +157,55 @@ export type MarketingCampaign = {
   failed_count: number;
   created_at: string;
 };
+
+// --- MercadoLibre -----------------------------------------------------------
+// Las escribe la Edge Function `meli-listings`. El panel edita solo título,
+// categoría, cantidad, tipo de publicación, atributos y la configuración.
+
+export type MeliSettings = {
+  margin_pct: number;
+  taxes_pct: number;
+  listing_type_id: "gold_special" | "gold_pro";
+  default_quantity: number;
+  free_shipping_min: number;
+  shipping_cost: number;
+  rounding: number;
+  vat: string;
+  warranty_time: string;
+  updated_at: string;
+};
+
+export type MeliListingStatus =
+  | "draft"
+  | "ready"
+  | "error"
+  | "active"
+  | "paused"
+  | "closed"
+  | "under_review"
+  | "inactive";
+
+export type MeliListing = {
+  id: string;
+  product_id: string;
+  meli_item_id: string | null;
+  status: MeliListingStatus;
+  title: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  listing_type_id: string | null;
+  quantity: number | null;
+  attributes: Record<string, string>;
+  price: number | null;
+  cost_basis: number | null;
+  fee_amount: number | null;
+  shipping_cost: number | null;
+  taxes_amount: number | null;
+  net_profit: number | null;
+  quoted_at: string | null;
+  errors: unknown;
+  permalink: string | null;
+  sold_quantity: number;
+  synced_at: string | null;
+  updated_at: string;
+};
