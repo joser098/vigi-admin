@@ -271,6 +271,16 @@ const Configuracion = ({ settings, onGuardado }: { settings: MeliSettings; onGua
 
 type AtributoCat = { id: string; name: string; required: boolean; values: string[] };
 
+type Candidato = {
+  id: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  gtin: string | null;
+  thumbnail: string | null;
+  exacto: boolean;
+};
+
 const Editor = ({
   producto,
   listing,
@@ -290,6 +300,8 @@ const Editor = ({
     attributes: listing.attributes ?? {},
   });
   const [atributos, setAtributos] = useState<AtributoCat[] | null>(null);
+  const [candidatos, setCandidatos] = useState<Candidato[] | null>(null);
+  const [buscando, setBuscando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
 
@@ -322,6 +334,21 @@ const Editor = ({
     setGuardando(false);
     if (e) return setError(e.message);
     onCambio();
+  };
+
+  // El GTIN se busca en el catálogo de MercadoLibre, pero lo elige una
+  // persona: dos productos con nombre parecido pueden tener códigos distintos.
+  const buscarGtin = async () => {
+    setBuscando(true);
+    setError("");
+    try {
+      const r = await invocar<{ candidates: Candidato[] }>({ action: "catalog", product_id: producto.id });
+      setCandidatos(r.candidates);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBuscando(false);
+    }
   };
 
   const causas = causasDe(listing.errors);
@@ -377,6 +404,48 @@ const Editor = ({
               <p className="tabular font-medium">{v}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {!esPublicada && (
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs text-neutral-600">
+              GTIN (código de barras): <b>{form.attributes.GTIN || "sin cargar"}</b>
+            </span>
+            <button className="btn-ghost" onClick={buscarGtin} disabled={buscando}>
+              {buscando ? "Buscando…" : "Buscar GTIN en el catálogo de ML"}
+            </button>
+          </div>
+          {candidatos && (
+            <div className="mt-2 space-y-1">
+              {candidatos.length === 0 && (
+                <p className="text-xs text-neutral-500">
+                  No aparece en el catálogo. Cargá el código de la caja en el campo GTIN de abajo.
+                </p>
+              )}
+              {candidatos.map((c) => (
+                <div key={c.id} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 text-xs">
+                  {c.thumbnail && <img src={c.thumbnail} alt="" className="size-8 rounded object-contain" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{c.name}</p>
+                    <p className="text-neutral-500">
+                      {c.brand} · modelo {c.model ?? "—"} · GTIN {c.gtin ?? "—"}
+                      {c.exacto && <span className="ml-2 text-green-700">mismo modelo</span>}
+                    </p>
+                  </div>
+                  <button
+                    className="btn-ghost"
+                    disabled={!c.gtin}
+                    onClick={() => setForm({ ...form, attributes: { ...form.attributes, GTIN: c.gtin ?? "" } })}
+                  >
+                    Usar
+                  </button>
+                </div>
+              ))}
+              <p className="text-[11px] text-neutral-400">Después de elegir, tocá Guardar cambios.</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -576,7 +645,9 @@ const Meli = () => {
     }
 
     const ok = resultados.filter((r) => r.ok).length;
-    const mal = resultados.filter((r) => !r.ok);
+    // Los que fallaron y los que salieron bien pero con algo para mirar
+    // (por ejemplo, preparados sin GTIN).
+    const mal = resultados.filter((r) => !r.ok || r.message);
     if (resultados.length) setAviso(`${ok} de ${resultados.length} sin problemas.`);
     setFallos(mal);
     await cargar();
