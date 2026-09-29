@@ -18,8 +18,9 @@ type CampoTexto = "preheader" | "titulo" | "bajada" | "cta" | "utm";
 /**
  * Email marketing.
  *
- * Quien manda es la Edge Function `marketing-send`, nunca el navegador: la API
- * key de Resend no puede estar en el bundle. Esta pantalla arma la campaña,
+ * Quien manda es la Edge Function `marketing-send`, nunca el navegador: las API
+ * keys no pueden estar en el bundle. Manda por Unitpost y usa lo que le sobra a
+ * Resend (que queda para los mails de compra) como desborde. Esta pantalla arma la campaña,
  * muestra la preview y aprieta el botón.
  *
  * Tres cosas que la pantalla no deja hacer, a propósito:
@@ -30,9 +31,9 @@ type CampoTexto = "preheader" | "titulo" | "bajada" | "cta" | "utm";
  *   - Editar una campaña ya enviada, ni una que está a mitad de camino. El
  *     registro tiene que seguir describiendo lo que la gente recibió, y los que
  *     ya la recibieron no pueden haber recibido otra cosa que los de mañana.
- *   - Pasarse de la cuota diaria de Resend. En el plan gratuito son 100 mails
- *     por día **compartidos con los transaccionales de la API**, así que una
- *     lista de mil contactos sale en tandas.
+ *   - Pasarse de las cuotas gratuitas: Unitpost manda 200 por día y 5000 por
+ *     mes, y de Resend solo se usa lo que no hace falta para los mails de
+ *     compra. Una lista de mil contactos sale en tandas.
  *
  * Todo lo que puede pasar de mil filas —contactos, envíos— se pide con
  * `traerTodo`. PostgREST corta en 1000 y no avisa: con 1200 contactos, una
@@ -42,11 +43,19 @@ type CampoTexto = "preheader" | "titulo" | "bajada" | "cta" | "utm";
 const TAB = { campanas: "Campañas", armar: "Armar con productos", contactos: "Contactos" } as const;
 type Tab = keyof typeof TAB;
 
-// Cuota del plan gratuito de Resend y tamaño de tanda por defecto. Están
-// duplicados en la Edge Function, que es la que manda de verdad: acá son para
-// pintar los números antes de apretar el botón.
-const LIMITE_DIARIO = 100;
-const TANDA = 85;
+// Cuotas de los planes gratuitos. Están duplicadas en la Edge Function, que es
+// la que manda de verdad: acá son para pintar los números antes de apretar el
+// botón.
+//
+// Unitpost: 200 por día y 5000 por mes, menos un colchón para las pruebas.
+// Resend: 100 por día compartidos con los mails de compra, de los que las
+// campañas usan como mucho 60 y los otros 40 quedan reservados.
+const UNITPOST_DIARIO = 200;
+const UNITPOST_MENSUAL = 5000;
+const UNITPOST_COLCHON = 5;
+const RESEND_CAMPANAS = 60;
+const LIMITE_DIARIO = UNITPOST_DIARIO - UNITPOST_COLCHON + RESEND_CAMPANAS;
+const TANDA = LIMITE_DIARIO;
 
 // "Vigi" y no vacío: sin nombre de remitente, la bandeja muestra la parte de
 // antes del arroba de la dirección —"marketing"—, que no le dice nada a nadie.
@@ -61,6 +70,20 @@ const medianocheUTC = () => {
   return d.toISOString();
 };
 
+const inicioMesUTC = () => {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
+};
+
+// Mails de campaña con status "sent" por un proveedor desde una fecha.
+const contarEnviados = (proveedor: "unitpost" | "resend", desde: string) =>
+  supabase
+    .from("marketing_sends")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "sent")
+    .eq("provider", proveedor)
+    .gte("created_at", desde);
+
 const EmailMarketing = () => {
   const [tab, setTab] = useState<Tab>("campanas");
   const [campanas, setCampanas] = useState<MarketingCampaign[]>([]);
@@ -71,7 +94,7 @@ const EmailMarketing = () => {
   // esas: una campaña en "sent" no tiene pendientes por definición, y traer
   // sus envíos sería cargar el historial entero al navegador.
   const [alcanzados, setAlcanzados] = useState<Record<string, Set<string>>>({});
-  const [hoy, setHoy] = useState(0);
+  const [uso, setUso] = useState({ unitpostHoy: 0, unitpostMes: 0, resendHoy: 0 });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -98,7 +121,7 @@ const EmailMarketing = () => {
 
   const cargar = async () => {
     try {
-      const [c, k, p, n, cu] = await Promise.all([
+      const [c, k, p, uh, um, rh, cu] = await Promise.all([
         supabase.from("marketing_campaigns").select("*").order("created_at", { ascending: false }),
 
         traerTodo<MarketingContact>((desde, hasta) =>
@@ -123,13 +146,11 @@ const EmailMarketing = () => {
             .range(desde, hasta)
         ),
 
-        // Cuántos mails salieron hoy. Desde la medianoche UTC, que es cuando
-        // Resend reinicia la cuenta.
-        supabase
-          .from("marketing_sends")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "sent")
-          .gte("created_at", medianocheUTC()),
+        // Cuántos mails salieron por cada proveedor. En UTC, que es cuando
+        // reinician la cuenta.
+        contarEnviados("unitpost", medianocheUTC()),
+        contarEnviados("unitpost", inicioMesUTC()),
+        contarEnviados("resend", medianocheUTC()),
 
         // Los cupones activos, para poder colgarle uno a la campaña. Es lo
         // único que después contesta "¿esto vendió?": el código se tipea en el
@@ -162,7 +183,7 @@ const EmailMarketing = () => {
       setContactos(k);
       setProductos(p);
       setAlcanzados(mapa);
-      setHoy(n.count ?? 0);
+      setUso({ unitpostHoy: uh.count ?? 0, unitpostMes: um.count ?? 0, resendHoy: rh.count ?? 0 });
       setCupones((cu.data ?? []) as Coupon[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -272,14 +293,23 @@ const EmailMarketing = () => {
   };
 
   // --- Envío por tandas -----------------------------------------------------
-  // La lista no sale de una: son 100 mails por día en el plan gratuito de
-  // Resend, compartidos con los transaccionales de la API. Cada tanda le manda
+  // La lista no sale de una: entre Unitpost y el sobrante de Resend son unos
+  // 255 mails por día, y Unitpost corta a los 5000 del mes. Cada tanda le manda
   // a los que todavía no la recibieron, así que se puede seguir mañana sin que
   // nadie la reciba dos veces.
   const yaRecibieron = editandoId ? (alcanzados[editandoId] ?? new Set<string>()) : new Set<string>();
   const pendientes = suscriptos.filter((c) => !yaRecibieron.has(c.email.toLowerCase()));
   const alcanzadosCount = suscriptos.length - pendientes.length;
-  const disponibleHoy = Math.max(0, LIMITE_DIARIO - hoy);
+  const hoy = uso.unitpostHoy + uso.resendHoy;
+  const libreUnitpost = Math.max(
+    0,
+    Math.min(
+      UNITPOST_DIARIO - UNITPOST_COLCHON - uso.unitpostHoy,
+      UNITPOST_MENSUAL - UNITPOST_COLCHON - uso.unitpostMes
+    )
+  );
+  const libreResend = Math.max(0, RESEND_CAMPANAS - uso.resendHoy);
+  const disponibleHoy = libreUnitpost + libreResend;
   const vanAhora = Math.min(tamanoTanda, disponibleHoy, pendientes.length);
 
   const enviar = async () => {
@@ -473,7 +503,7 @@ const EmailMarketing = () => {
         <Stat
           label="Enviados hoy"
           value={`${number(hoy)} / ${LIMITE_DIARIO}`}
-          hint="Cuota diaria de Resend, compartida con los mails de compra"
+          hint={`Unitpost ${number(uso.unitpostHoy)} (${number(uso.unitpostMes)} / ${number(UNITPOST_MENSUAL)} en el mes) · Resend ${number(uso.resendHoy)}`}
         />
         <Stat label="Campañas enviadas" value={number(campanas.filter((c) => c.status === "sent").length)} />
       </div>
@@ -617,8 +647,8 @@ const EmailMarketing = () => {
                   <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                     <h3 className="text-sm font-medium">Envío por tandas</h3>
                     <p className="text-xs text-neutral-500">
-                      Resend gratis manda {LIMITE_DIARIO} por día, y los comparte con los mails de
-                      compra. Hoy quedan <b>{number(disponibleHoy)}</b>.
+                      Hoy quedan <b>{number(disponibleHoy)}</b>: {number(libreUnitpost)} por Unitpost
+                      y {number(libreResend)} por Resend, que se usa solo si Unitpost no alcanza.
                     </p>
                   </div>
 
@@ -965,7 +995,7 @@ const EmailMarketing = () => {
                 <p className="mt-1 text-xs text-neutral-500">
                   El mail muestra el código y dice que va en el carrito. Cada venta con{" "}
                   <b>{ajustes.cupon.code.toUpperCase()}</b> queda en <b>Cupones</b> con su monto:
-                  ese es el número que dice si conviene pagar Resend.
+                  ese es el número que dice si conviene pagar un plan de envíos.
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-neutral-400">
