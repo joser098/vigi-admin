@@ -173,8 +173,13 @@ export type MeliSettings = {
   vat: string;
   warranty_time: string;
   catalog_min_margin_pct: number;
+  installments: MeliCuotas;
   updated_at: string;
 };
+
+// Cuotas sin interés: none = Clásica, 3x = Premium + campaña de 3 cuotas,
+// 6x = Premium (6 cuotas por defecto).
+export type MeliCuotas = "none" | "3x" | "6x";
 
 export type MeliListingStatus =
   | "draft"
@@ -216,5 +221,7 @@ export type MeliListing = {
   price_to_win: number | null;
   catalog_min_price: number | null;
   catalog_checked_at: string | null;
+  // NULL = la de la configuración.
+  installments: MeliCuotas | null;
   updated_at: string;
 };

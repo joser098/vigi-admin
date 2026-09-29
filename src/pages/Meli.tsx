@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase, traerTodo } from "@/lib/supabase";
 import { money, number, dateTime } from "@/lib/format";
 import { PageTitle, Badge, Stat, Loading, ErrorBox } from "@/components/ui";
-import type { MeliListing, MeliListingStatus, MeliSettings } from "@/lib/types";
+import type { MeliCuotas, MeliListing, MeliListingStatus, MeliSettings } from "@/lib/types";
 
 /**
  * Publicaciones en MercadoLibre.
@@ -83,6 +83,12 @@ const ESTADO: Record<"none" | MeliListingStatus, { label: string; tone: "neutral
 
 const publicada = (l?: MeliListing) => Boolean(l?.meli_item_id);
 
+const CUOTAS: Record<MeliCuotas, { label: string; corto: string; listingType: "gold_special" | "gold_pro" }> = {
+  none: { label: "Sin cuotas sin interés (Clásica)", corto: "Sin cuotas", listingType: "gold_special" },
+  "3x": { label: "3 cuotas sin interés (Premium)", corto: "3 cuotas", listingType: "gold_pro" },
+  "6x": { label: "6 cuotas sin interés (Premium)", corto: "6 cuotas", listingType: "gold_pro" },
+};
+
 // Estado de catálogo tal cual lo devuelve MercadoLibre: elegibilidad antes del
 // optin, competencia después.
 const CATALOGO: Record<string, { label: string; tone: "neutral" | "green" | "amber" | "red" | "violet" }> = {
@@ -148,6 +154,7 @@ type Estado =
       can_sell?: boolean | null;
       sell_codes?: string[];
       mercadoenvios?: string | null;
+      installments_3x?: boolean;
     }
   | { connected: false; auth_url: string | null; error?: string };
 
@@ -173,6 +180,10 @@ const Conexion = ({ estado, onConectar }: { estado: Estado | null; onConectar: (
               {estado.can_list === false ? "no" : estado.can_list ? "sí" : "—"}
             </b>
             {" · "}Mercado Envíos: <b>{estado.mercadoenvios ?? "—"}</b>
+            {" · "}3 cuotas sin interés:{" "}
+            <b className={estado.installments_3x ? "text-green-700" : "text-neutral-500"}>
+              {estado.installments_3x ? "habilitadas" : "no habilitadas"}
+            </b>
           </p>
           {[...(estado.list_codes ?? []), ...(estado.sell_codes ?? [])].length > 0 && (
             <p className="mt-1 text-red-600">
@@ -221,7 +232,9 @@ const Configuracion = ({ settings, onGuardado }: { settings: MeliSettings; onGua
         margin_pct: Number(form.margin_pct),
         catalog_min_margin_pct: Number(form.catalog_min_margin_pct),
         taxes_pct: Number(form.taxes_pct),
-        listing_type_id: form.listing_type_id,
+        installments: form.installments,
+        // El tipo sale de las cuotas; se guarda igual para leerlo de un vistazo.
+        listing_type_id: CUOTAS[form.installments ?? "none"].listingType,
         default_quantity: Number(form.default_quantity),
         free_shipping_min: Number(form.free_shipping_min),
         shipping_cost: Number(form.shipping_cost),
@@ -253,7 +266,7 @@ const Configuracion = ({ settings, onGuardado }: { settings: MeliSettings; onGua
     <details className="card p-5">
       <summary className="cursor-pointer text-sm font-medium">
         Configuración de precios · ganancia {number(settings.margin_pct)}% sobre el costo ·{" "}
-        {settings.listing_type_id === "gold_pro" ? "Premium" : "Clásica"}
+        {CUOTAS[settings.installments ?? "none"].corto}
       </summary>
 
       <p className="mt-3 text-xs text-neutral-500">
@@ -267,15 +280,21 @@ const Configuracion = ({ settings, onGuardado }: { settings: MeliSettings; onGua
         {num("catalog_min_margin_pct", "Ganancia mínima en catálogo (%)", "Piso para competir por el botón de compra")}
         {num("taxes_pct", "Impuestos y retenciones (%)", "IIBB y percepciones que descuenta ML")}
         <label className="block">
-          <span className="label">Tipo de publicación</span>
+          <span className="label">Cuotas sin interés</span>
           <select
             className="input"
-            value={form.listing_type_id}
-            onChange={(e) => campo("listing_type_id", e.target.value as MeliSettings["listing_type_id"])}
+            value={form.installments ?? "none"}
+            onChange={(e) => campo("installments", e.target.value as MeliCuotas)}
           >
-            <option value="gold_special">Clásica</option>
-            <option value="gold_pro">Premium (cuotas sin interés)</option>
+            {(Object.keys(CUOTAS) as MeliCuotas[]).map((k) => (
+              <option key={k} value={k}>
+                {CUOTAS[k].label}
+              </option>
+            ))}
           </select>
+          <span className="mt-1 block text-[11px] text-neutral-400">
+            Las cuotas suben la comisión: el precio se recalcula para mantener la ganancia
+          </span>
         </label>
         {num("free_shipping_min", "Envío gratis obligatorio desde ($)", "Verificar el valor vigente en ML")}
         {num("shipping_cost", "Costo estimado del envío gratis ($)", "Promedio que paga VIGI por envío")}
@@ -430,6 +449,29 @@ const Editor = ({
           />
           <span className="mt-1 block text-[11px] text-neutral-400">{form.category_name || "id de categoría, ej. MLA5959"}</span>
         </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-xs">
+          Cuotas sin interés
+          <select
+            className="input max-w-[16rem]"
+            value={listing.installments ?? ""}
+            onChange={(e) => e.target.value && accion("installments", { installments: e.target.value })}
+          >
+            <option value="">Según configuración</option>
+            {(Object.keys(CUOTAS) as MeliCuotas[]).map((k) => (
+              <option key={k} value={k}>
+                {CUOTAS[k].label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-[11px] text-neutral-400">
+          {esPublicada
+            ? "Cambia el tipo y el precio de la publicación en MercadoLibre"
+            : "Recalcula el precio con la comisión de las cuotas"}
+        </span>
       </div>
 
       {listing.price != null && (
@@ -1104,7 +1146,14 @@ const FilaProducto = ({
       </td>
       <td className="td tabular text-right">{money(p.cost)}</td>
       <td className="td tabular text-right">{money(p.price)}</td>
-      <td className="td tabular text-right font-medium">{money(l?.price)}</td>
+      <td className="td tabular text-right font-medium">
+        {money(l?.price)}
+        {l?.listing_type_id && (
+          <p className="text-[10px] font-normal text-neutral-400">
+            {l.installments ? CUOTAS[l.installments].corto : l.listing_type_id === "gold_pro" ? "Premium" : "Clásica"}
+          </p>
+        )}
+      </td>
       <td className={`td tabular text-right ${l?.net_profit != null && l.net_profit < 0 ? "text-red-600" : ""}`}>
         {l?.net_profit != null ? `${money(l.net_profit)} · ${pct}%` : "—"}
       </td>
