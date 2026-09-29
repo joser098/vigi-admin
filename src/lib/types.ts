@@ -172,6 +172,7 @@ export type MeliSettings = {
   rounding: number;
   vat: string;
   warranty_time: string;
+  catalog_min_margin_pct: number;
   updated_at: string;
 };
 
@@ -207,5 +208,13 @@ export type MeliListing = {
   permalink: string | null;
   sold_quantity: number;
   synced_at: string | null;
+  // Publicación de catálogo (migración 0018).
+  catalog_product_id: string | null;
+  catalog_item_id: string | null;
+  catalog_status: string | null;
+  catalog_price: number | null;
+  price_to_win: number | null;
+  catalog_min_price: number | null;
+  catalog_checked_at: string | null;
   updated_at: string;
 };

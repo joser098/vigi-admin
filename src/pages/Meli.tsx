@@ -83,6 +83,21 @@ const ESTADO: Record<"none" | MeliListingStatus, { label: string; tone: "neutral
 
 const publicada = (l?: MeliListing) => Boolean(l?.meli_item_id);
 
+// Estado de catálogo tal cual lo devuelve MercadoLibre: elegibilidad antes del
+// optin, competencia después.
+const CATALOGO: Record<string, { label: string; tone: "neutral" | "green" | "amber" | "red" | "violet" }> = {
+  READY_FOR_OPTIN: { label: "Se puede sumar", tone: "violet" },
+  ALREADY_OPTED_IN: { label: "Ya en catálogo", tone: "neutral" },
+  NOT_ELIGIBLE: { label: "No elegible", tone: "neutral" },
+  PRODUCT_INACTIVE: { label: "Sin ficha activa", tone: "neutral" },
+  CLOSED: { label: "Cerrada", tone: "neutral" },
+  winning: { label: "Ganando", tone: "green" },
+  sharing_first_place: { label: "Empatando", tone: "green" },
+  competing: { label: "Perdiendo", tone: "amber" },
+  listed: { label: "Sin competir", tone: "amber" },
+};
+const estadoCatalogo = (s?: string | null) => (s ? CATALOGO[s] ?? { label: s, tone: "neutral" as const } : null);
+
 /** El mensaje de error real de la function, no el genérico de supabase-js. */
 const mensajeDe = async (error: unknown) => {
   const ctx = (error as { context?: Response })?.context;
@@ -204,6 +219,7 @@ const Configuracion = ({ settings, onGuardado }: { settings: MeliSettings; onGua
       .from("meli_settings")
       .update({
         margin_pct: Number(form.margin_pct),
+        catalog_min_margin_pct: Number(form.catalog_min_margin_pct),
         taxes_pct: Number(form.taxes_pct),
         listing_type_id: form.listing_type_id,
         default_quantity: Number(form.default_quantity),
@@ -248,6 +264,7 @@ const Configuracion = ({ settings, onGuardado }: { settings: MeliSettings; onGua
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         {num("margin_pct", "Ganancia neta sobre costo (%)")}
+        {num("catalog_min_margin_pct", "Ganancia mínima en catálogo (%)", "Piso para competir por el botón de compra")}
         {num("taxes_pct", "Impuestos y retenciones (%)", "IIBB y percepciones que descuenta ML")}
         <label className="block">
           <span className="label">Tipo de publicación</span>
@@ -322,6 +339,7 @@ const Editor = ({
     category_name: listing.category_name ?? "",
     quantity: listing.quantity ?? 0,
     attributes: listing.attributes ?? {},
+    catalog_product_id: listing.catalog_product_id ?? "",
   });
   const [atributos, setAtributos] = useState<AtributoCat[] | null>(null);
   const [candidatos, setCandidatos] = useState<Candidato[] | null>(null);
@@ -352,6 +370,7 @@ const Editor = ({
         category_id: form.category_id.trim(),
         category_name: form.category_name,
         attributes: form.attributes,
+        catalog_product_id: form.catalog_product_id.trim() || null,
         ...(esPublicada ? {} : { quantity: Number(form.quantity) }),
       })
       .eq("product_id", producto.id);
@@ -461,13 +480,21 @@ const Editor = ({
                   <button
                     className="btn-ghost"
                     disabled={!c.gtin}
-                    onClick={() => setForm({ ...form, attributes: { ...form.attributes, GTIN: c.gtin ?? "" } })}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        attributes: { ...form.attributes, GTIN: c.gtin ?? "" },
+                        catalog_product_id: c.id,
+                      })
+                    }
                   >
                     Usar
                   </button>
                 </div>
               ))}
-              <p className="text-[11px] text-neutral-400">Después de elegir, tocá Guardar cambios.</p>
+              <p className="text-[11px] text-neutral-400">
+                Elegir también fija la ficha del catálogo. Después, tocá Guardar cambios.
+              </p>
             </div>
           )}
         </div>
@@ -565,6 +592,122 @@ const Editor = ({
           </a>
         )}
       </div>
+
+      {esPublicada && (
+        <Catalogo listing={listing} form={form} setForm={setForm} accion={accion} onCambio={onCambio} />
+      )}
+    </div>
+  );
+};
+
+/**
+ * La publicación de catálogo de un producto ya publicado.
+ *
+ * Nunca baja el precio sola: muestra el precio para ganar y el mínimo que deja
+ * la ganancia de catálogo, y solo ofrece igualar si no se pierde plata.
+ */
+const Catalogo = ({
+  listing: l,
+  form,
+  setForm,
+  accion,
+  onCambio,
+}: {
+  listing: MeliListing;
+  form: { catalog_product_id: string };
+  setForm: (f: never) => void;
+  accion: (a: string, extra?: Record<string, unknown>) => Promise<void>;
+  onCambio: () => void;
+}) => {
+  const [error, setError] = useState("");
+  const est = estadoCatalogo(l.catalog_status);
+
+  const guardarFicha = async () => {
+    setError("");
+    const { error: e } = await supabase
+      .from("meli_listings")
+      .update({ catalog_product_id: form.catalog_product_id.trim() || null })
+      .eq("product_id", l.product_id);
+    if (e) return setError(e.message);
+    onCambio();
+  };
+  const conviene = l.price_to_win != null && l.catalog_min_price != null && l.price_to_win >= l.catalog_min_price;
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white px-4 py-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm font-medium">Catálogo</p>
+        {est && <Badge tone={est.tone}>{est.label}</Badge>}
+        {l.catalog_checked_at && (
+          <span className="text-[11px] text-neutral-400">consultado {dateTime(l.catalog_checked_at)}</span>
+        )}
+        <button className="btn-ghost ml-auto" onClick={() => accion("catalog_check")}>
+          Consultar catálogo
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-3 text-xs sm:grid-cols-4">
+        {[
+          ["Precio en catálogo", money(l.catalog_price)],
+          ["Precio para ganar", money(l.price_to_win)],
+          ["Mínimo con ganancia", money(l.catalog_min_price)],
+          ["Ficha", l.catalog_product_id ?? "—"],
+        ].map(([k, v]) => (
+          <div key={k} className="rounded-lg bg-neutral-50 px-3 py-2">
+            <p className="text-neutral-500">{k}</p>
+            <p className="tabular font-medium">{v}</p>
+          </div>
+        ))}
+      </div>
+
+      {!l.catalog_item_id && (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="text-xs text-neutral-600">Ficha del catálogo (ej. MLA12345678)</span>
+            <input
+              className="input"
+              value={form.catalog_product_id}
+              onChange={(e) => setForm({ ...form, catalog_product_id: e.target.value } as never)}
+            />
+          </label>
+          <button
+            className="btn-ghost"
+            disabled={form.catalog_product_id.trim() === (l.catalog_product_id ?? "")}
+            onClick={guardarFicha}
+          >
+            Guardar ficha
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!l.catalog_product_id}
+            title={!l.catalog_product_id ? "Guardá primero la ficha del catálogo" : undefined}
+            onClick={() => accion("catalog_optin")}
+          >
+            Sumar a catálogo
+          </button>
+          <p className="w-full text-[11px] text-neutral-400">
+            La ficha tiene que ser exactamente este producto: si el comprador recibe otra cosa, el reclamo va a
+            la reputación. Si no la sabés, usá "Buscar GTIN en el catálogo" y elegí el que corresponde.
+          </p>
+        </div>
+      )}
+
+      {error && <div className="mt-3"><ErrorBox>{error}</ErrorBox></div>}
+
+      {l.catalog_item_id && l.price_to_win != null && l.catalog_price !== l.price_to_win && (
+        <div className="mt-3">
+          {conviene ? (
+            <button className="btn-primary" onClick={() => accion("catalog_price", { price: l.price_to_win })}>
+              Igualar precio para ganar ({money(l.price_to_win)})
+            </button>
+          ) : (
+            <p className="text-xs text-amber-700">
+              Para ganar habría que bajar a {money(l.price_to_win)}, menos que el mínimo con ganancia (
+              {money(l.catalog_min_price)}). No conviene competir por precio en este producto.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -831,6 +974,13 @@ const Meli = () => {
           >
             Actualizar precio
           </button>
+          <button
+            className="btn-ghost"
+            disabled={!!trabajando || !elegidos.size}
+            onClick={() => correr("catalog_check", elegidosIds.filter((id) => publicada(listings[id])))}
+          >
+            Revisar catálogo
+          </button>
           <button className="btn-primary" disabled={!!trabajando || !elegidos.size} onClick={() => publicar(elegidosIds)}>
             Publicar
           </button>
@@ -870,6 +1020,7 @@ const Meli = () => {
               <th className="th text-right">Ganancia</th>
               <th className="th">Categoría ML</th>
               <th className="th">Estado</th>
+              <th className="th">Catálogo</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -963,10 +1114,16 @@ const FilaProducto = ({
         {l?.sold_quantity ? <span className="ml-2 text-xs text-neutral-500">{l.sold_quantity} vendidas</span> : null}
         {l?.synced_at && <p className="mt-0.5 text-[10px] text-neutral-400">{dateTime(l.synced_at)}</p>}
       </td>
+      <td className="td">
+        {(() => {
+          const c = estadoCatalogo(l?.catalog_status);
+          return c ? <Badge tone={c.tone}>{c.label}</Badge> : <span className="text-xs text-neutral-400">—</span>;
+        })()}
+      </td>
     </tr>
     {abierto && (
       <tr>
-        <td colSpan={8} className="p-0">
+        <td colSpan={9} className="p-0">
           {l ? (
             <Editor key={l.updated_at} producto={p} listing={l} onCambio={onCambio} accion={accion} />
           ) : (
