@@ -44,6 +44,29 @@ const TANDA = 10;
 // MercadoLibre.
 const redirectUri = () => `${window.location.origin}/meli`;
 
+// PKCE: la aplicación de MercadoLibre lo exige. El verifier es un secreto de
+// un solo uso que se genera acá, se guarda en esta pestaña mientras se va a
+// MercadoLibre a autorizar, y vuelve a la function para canjear el code. A
+// MercadoLibre solo viaja su SHA-256 (el challenge).
+const PKCE_KEY = "vigi.meli_pkce_verifier";
+
+const base64url = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+const nuevoPkce = async () => {
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return { verifier, challenge: base64url(new Uint8Array(hash)) };
+};
+
+const leerVerifier = () => {
+  try {
+    return sessionStorage.getItem(PKCE_KEY);
+  } catch {
+    return null;
+  }
+};
+
 type Filtro = "todos" | "none" | MeliListingStatus;
 
 const ESTADO: Record<"none" | MeliListingStatus, { label: string; tone: "neutral" | "green" | "amber" | "red" | "violet" }> = {
@@ -511,7 +534,13 @@ const Meli = () => {
     const code = new URLSearchParams(window.location.search).get("code");
     if (code) {
       window.history.replaceState(null, "", "/meli");
-      invocar({ action: "connect", code, redirect_uri: redirectUri() })
+      const verifier = leerVerifier();
+      try {
+        sessionStorage.removeItem(PKCE_KEY);
+      } catch {
+        // sin storage: el verifier ya se leyó
+      }
+      invocar({ action: "connect", code, redirect_uri: redirectUri(), code_verifier: verifier })
         .then(() => setAviso("Cuenta de MercadoLibre conectada."))
         .catch((e) => setError(`No se pudo conectar: ${e.message}`))
         .finally(consultarEstado);
@@ -632,8 +661,20 @@ const Meli = () => {
       <div className="mb-6 space-y-4">
         <Conexion
           estado={estado}
-          onConectar={() => {
-            if (estado && !estado.connected && estado.auth_url) window.location.href = estado.auth_url;
+          onConectar={async () => {
+            try {
+              const { verifier, challenge } = await nuevoPkce();
+              sessionStorage.setItem(PKCE_KEY, verifier);
+              const r = await invocar<Estado>({
+                action: "status",
+                redirect_uri: redirectUri(),
+                code_challenge: challenge,
+              });
+              if (!r.connected && r.auth_url) window.location.href = r.auth_url;
+              else setEstado(r);
+            } catch (e) {
+              setError(`No se pudo iniciar la conexión: ${e instanceof Error ? e.message : String(e)}`);
+            }
           }}
         />
         {settings && <Configuracion settings={settings} onGuardado={cargar} />}
