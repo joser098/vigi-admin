@@ -8,7 +8,9 @@ export const galleryUrl = (model: string, i: number) =>
 
 export type ItemGaleria =
   | { id: string; tipo: "existente"; indice: number; preview: string }
-  | { id: string; tipo: "nueva"; archivo: File; preview: string };
+  | { id: string; tipo: "nueva"; archivo: File; preview: string }
+  // Foto del catálogo de ML: la Edge Function la descarga y la guarda en R2.
+  | { id: string; tipo: "meli"; url: string; preview: string };
 
 // Le manda a la Edge Function el estado final completo de la galería. Ella
 // reescribe 0.png, 1.png… y actualiza thumbnail y gallery en la base.
@@ -19,6 +21,8 @@ export const guardarGaleria = async (model: string, items: ItemGaleria[]) => {
   const orden = items.map((it) =>
     it.tipo === "existente"
       ? { tipo: "existente", indice: it.indice }
+      : it.tipo === "meli"
+      ? { tipo: "url", url: it.url }
       : { tipo: "nueva", archivo: -1 }
   );
 

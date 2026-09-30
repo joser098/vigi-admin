@@ -6,6 +6,7 @@ import { getComision, setComision, comisionMonto, gananciaNeta, margenNeto } fro
 import { galleryUrl, guardarGaleria, type ItemGaleria } from "@/lib/images";
 import { Badge, Loading, ErrorBox, Empty } from "@/components/ui";
 import GalleryEditor from "@/components/GalleryEditor";
+import MeliFotos from "@/components/MeliFotos";
 import { MeliPrice } from "../components/MeliPrice";
 import type { Product } from "@/lib/types";
 
@@ -154,22 +155,44 @@ const ProductDetail = () => {
   const ganancia = gananciaNeta(producto.cost, conDescuento, comision);
   const margen = margenNeto(producto.cost, conDescuento, comision);
 
+  // Cifras de rentabilidad: [etiqueta, valor, clase del valor].
+  const cifras: Array<[string, string, string]> = [
+    ["Costo", money(producto.cost), ""],
+    ["Precio final", money(conDescuento), "text-primary"],
+    [
+      `Comisión ${comision}%`,
+      comisionDelPrecio == null ? "—" : `− ${money(comisionDelPrecio)}`,
+      "text-neutral-400",
+    ],
+    ["Ganancia neta", money(ganancia), ganancia != null && ganancia <= 0 ? "text-red-600" : ""],
+    ["Margen neto", margen == null ? "—" : `${margen}%`, margen != null && margen < 10 ? "text-red-600" : ""],
+  ];
+
   return (
     <>
       <Link to="/productos" className="mb-4 inline-block text-sm text-neutral-500 hover:text-neutral-900">
         ← Productos
       </Link>
 
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight">{producto.model}</h1>
-            {!form.is_active && <Badge tone="red">oculto</Badge>}
-            {form.has_promotion && <Badge tone="amber">promo</Badge>}
+      {/* ------------------------------ Encabezado ------------------------------ */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50">
+            {producto.thumbnail && (
+              <img src={producto.thumbnail} alt="" className="size-full object-contain" />
+            )}
           </div>
-          <p className="mt-1 text-sm text-neutral-500">
-            {form.provider ?? "sin marca"} · {form.category}
-          </p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="truncate text-2xl font-semibold tracking-tight">{producto.model}</h1>
+              {!form.is_active && <Badge tone="red">oculto</Badge>}
+              {form.has_promotion && <Badge tone="amber">promo</Badge>}
+            </div>
+            <p className="mt-1 truncate text-sm text-neutral-500">
+              {form.provider ?? "sin marca"} · {form.category}
+              {form.title ? ` · ${form.title}` : ""}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -183,195 +206,161 @@ const ProductDetail = () => {
 
       {error && <div className="mb-6"><ErrorBox>{error}</ErrorBox></div>}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* ---------------------------- Rentabilidad ---------------------------- */}
-        <Seccion
-          titulo="Rentabilidad"
-          desc="El costo lo escribe el importador desde la lista del proveedor y no se edita acá."
-          className="lg:col-span-2"
-        >
-          <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-5">
-            <div>
-              <p className="label">Costo</p>
-              <p className="tabular text-lg font-semibold">{money(producto.cost)}</p>
+      <div className="grid items-start gap-6 lg:grid-cols-3">
+        {/* ========================== Columna principal ========================== */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* ---------------------------- Rentabilidad ---------------------------- */}
+          <Seccion
+            titulo="Rentabilidad"
+            desc="El costo lo escribe el importador desde la lista del proveedor y no se edita acá."
+          >
+            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {cifras.map(([label, valor, clase]) => (
+                <div key={label} className="rounded-lg bg-neutral-50 px-3 py-2.5">
+                  <p className="text-xs text-neutral-500">{label}</p>
+                  <p className={`tabular mt-0.5 text-lg font-semibold ${clase}`}>{valor}</p>
+                </div>
+              ))}
             </div>
-            <div>
-              <p className="label">Precio final</p>
-              <p className="tabular text-lg font-semibold text-primary">{money(conDescuento)}</p>
-            </div>
-            <div>
-              <p className="label">Comisión {comision}%</p>
-              <p className="tabular text-lg font-semibold text-neutral-400">
-                {comisionDelPrecio == null ? "—" : `− ${money(comisionDelPrecio)}`}
-              </p>
-            </div>
-            <div>
-              <p className="label">Ganancia neta</p>
-              <p className={`tabular text-lg font-semibold ${ganancia != null && ganancia <= 0 ? "text-red-600" : ""}`}>
-                {money(ganancia)}
-              </p>
-            </div>
-            <div>
-              <p className="label">Margen neto</p>
-              <p className={`tabular text-lg font-semibold ${margen != null && margen < 10 ? "text-red-600" : ""}`}>
-                {margen == null ? "—" : `${margen}%`}
-              </p>
-            </div>
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Campo
-              label="Margen (%)"
-              hint={form.price_override != null ? "Ignorado: hay un precio manual" : "Referencia: 30%"}
-            >
-              <input
-                type="number" min={0} step={1}
-                value={form.margin_pct}
-                onChange={(e) => set("margin_pct", Number(e.target.value))}
-                disabled={form.price_override != null}
-                className="input disabled:bg-neutral-50 disabled:text-neutral-400"
-              />
-            </Campo>
-
-            <Campo label="Precio manual" hint="Fija el precio y lo protege de las actualizaciones de costo.">
-              <div className="flex gap-2">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Campo
+                label="Margen (%)"
+                hint={form.price_override != null ? "Ignorado: hay un precio manual" : "Referencia: 30%"}
+              >
                 <input
                   type="number" min={0} step={1}
-                  value={form.price_override ?? ""}
-                  onChange={(e) => set("price_override", e.target.value === "" ? null : Number(e.target.value))}
-                  placeholder="usar el margen"
-                  className="input"
+                  value={form.margin_pct}
+                  onChange={(e) => set("margin_pct", Number(e.target.value))}
+                  disabled={form.price_override != null}
+                  className="input disabled:bg-neutral-50 disabled:text-neutral-400"
                 />
-                {form.price_override != null && (
-                  <button onClick={() => set("price_override", null)} className="btn-ghost shrink-0">
-                    Quitar
-                  </button>
-                )}
-              </div>
-            </Campo>
+              </Campo>
 
-            <Campo label="Comisión pasarela (%)" hint="No se guarda en el producto: es del medio de pago.">
-              <input
-                type="number" min={0} max={100} step={0.1}
-                value={comision}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setComisionState(v);
-                  setComision(v);
-                }}
-                className="input"
-              />
-            </Campo>
-          </div>
-        </Seccion>
+              <Campo label="Precio manual" hint="Fija el precio y lo protege de las actualizaciones de costo.">
+                <div className="flex gap-2">
+                  <input
+                    type="number" min={0} step={1}
+                    value={form.price_override ?? ""}
+                    onChange={(e) => set("price_override", e.target.value === "" ? null : Number(e.target.value))}
+                    placeholder="usar el margen"
+                    className="input"
+                  />
+                  {form.price_override != null && (
+                    <button onClick={() => set("price_override", null)} className="btn-ghost shrink-0">
+                      Quitar
+                    </button>
+                  )}
+                </div>
+              </Campo>
 
-        {/* --------------------------- Precio en MELI --------------------------- */}
-        <MeliPrice
-          productId={producto.id}
-          model={producto.model}
-          provider={producto.provider}
-          nuestroPrecio={conDescuento}
-          inicial={{
-            meli_price: producto.meli_price,
-            meli_url: producto.meli_url,
-            meli_checked_at: producto.meli_checked_at,
-          }}
-        />
-
-        {/* ------------------------------ Imágenes ------------------------------ */}
-        <Seccion titulo="Imágenes" desc="La primera es la que se ve en los listados.">
-          <GalleryEditor items={galeria} onChange={cambiarGaleria} />
-        </Seccion>
-
-        {/* -------------------------------- Ficha -------------------------------- */}
-        <Seccion titulo="Ficha" className="lg:col-span-2">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo label="Título">
-              <input value={form.title} onChange={(e) => set("title", e.target.value)} className="input" />
-            </Campo>
-
-            <Campo label="Marca">
-              <input
-                list="marcas"
-                value={form.provider ?? ""}
-                onChange={(e) => set("provider", e.target.value || null)}
-                className="input"
-              />
-              <datalist id="marcas">
-                {marcas.map((m) => <option key={m} value={m} />)}
-              </datalist>
-            </Campo>
-
-            <Campo label="Categoría">
-              <select
-                value={form.category}
-                onChange={(e) => set("category", e.target.value)}
-                className="input"
-              >
-                {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </Campo>
-
-            <Campo label="Ubicación" hint="Filtro de navegación en la tienda.">
-              <select
-                value={form.location ?? ""}
-                onChange={(e) => set("location", (e.target.value || null) as Editable["location"])}
-                className="input"
-              >
-                <option value="">Sin definir</option>
-                <option value="interior">Interior</option>
-                <option value="exterior">Exterior</option>
-              </select>
-            </Campo>
-
-            <Campo label="Alimentación" hint="En minúscula y sin acento: el filtro compara exacto.">
-              <input
-                value={form.power_type ?? ""}
-                onChange={(e) => set("power_type", e.target.value.toLowerCase() || null)}
-                placeholder="bateria, cableada…"
-                className="input"
-              />
-            </Campo>
-
-            <Campo label="Etiquetas" hint="Separadas por coma. Se usan en la búsqueda.">
-              <input
-                value={(form.tags ?? []).join(", ")}
-                onChange={(e) =>
-                  set("tags", e.target.value.split(",").map((t) => t.trim()).filter(Boolean))
-                }
-                className="input"
-              />
-            </Campo>
-
-            <div className="sm:col-span-2">
-              <Campo label="Descripción">
-                <textarea
-                  value={form.description ?? ""}
-                  onChange={(e) => set("description", e.target.value || null)}
-                  rows={3}
-                  className="input resize-none"
+              <Campo label="Comisión pasarela (%)" hint="No se guarda en el producto: es del medio de pago.">
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  value={comision}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setComisionState(v);
+                    setComision(v);
+                  }}
+                  className="input"
                 />
               </Campo>
             </div>
-          </div>
-        </Seccion>
+          </Seccion>
 
-        {/* ---------------------------- Visibilidad ---------------------------- */}
+          {/* -------------------------------- Ficha -------------------------------- */}
+          <Seccion titulo="Ficha" desc="Lo que se ve del producto en la tienda.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Campo label="Título">
+                  <input value={form.title} onChange={(e) => set("title", e.target.value)} className="input" />
+                </Campo>
+              </div>
+
+              <Campo label="Marca">
+                <input
+                  list="marcas"
+                  value={form.provider ?? ""}
+                  onChange={(e) => set("provider", e.target.value || null)}
+                  className="input"
+                />
+                <datalist id="marcas">
+                  {marcas.map((m) => <option key={m} value={m} />)}
+                </datalist>
+              </Campo>
+
+              <Campo label="Categoría">
+                <select
+                  value={form.category}
+                  onChange={(e) => set("category", e.target.value)}
+                  className="input"
+                >
+                  {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Campo>
+
+              <Campo label="Ubicación" hint="Filtro de navegación en la tienda.">
+                <select
+                  value={form.location ?? ""}
+                  onChange={(e) => set("location", (e.target.value || null) as Editable["location"])}
+                  className="input"
+                >
+                  <option value="">Sin definir</option>
+                  <option value="interior">Interior</option>
+                  <option value="exterior">Exterior</option>
+                </select>
+              </Campo>
+
+              <Campo label="Alimentación" hint="En minúscula y sin acento: el filtro compara exacto.">
+                <input
+                  value={form.power_type ?? ""}
+                  onChange={(e) => set("power_type", e.target.value.toLowerCase() || null)}
+                  placeholder="bateria, cableada…"
+                  className="input"
+                />
+              </Campo>
+
+              <div className="sm:col-span-2">
+                <Campo label="Etiquetas" hint="Separadas por coma. Se usan en la búsqueda.">
+                  <input
+                    value={(form.tags ?? []).join(", ")}
+                    onChange={(e) =>
+                      set("tags", e.target.value.split(",").map((t) => t.trim()).filter(Boolean))
+                    }
+                    className="input"
+                  />
+                </Campo>
+              </div>
+
+              <div className="sm:col-span-2">
+                <Campo label="Descripción">
+                  <textarea
+                    value={form.description ?? ""}
+                    onChange={(e) => set("description", e.target.value || null)}
+                    rows={5}
+                    className="input resize-y"
+                  />
+                </Campo>
+              </div>
+            </div>
+          </Seccion>
+
+          {/* ------------------------------ Imágenes ------------------------------ */}
+          <Seccion titulo="Imágenes" desc="La primera es la que se ve en los listados.">
+            <GalleryEditor items={galeria} onChange={cambiarGaleria} />
+            <MeliFotos productId={producto.id} items={galeria} onChange={cambiarGaleria} />
+          </Seccion>
+        </div>
+
+        {/* ============================ Columna lateral ============================ */}
         <div className="space-y-6">
-          <Seccion titulo="Promoción y visibilidad">
-            <Campo label="Descuento (%)" hint="Solo se aplica entre 1 y 50. Fuera de ese rango se ignora.">
-              <input
-                type="number" min={0} max={100} step={1}
-                value={form.discount}
-                onChange={(e) => set("discount", Number(e.target.value))}
-                className="input"
-              />
-            </Campo>
-
-            <div className="mt-4 space-y-3">
+          {/* ---------------------------- Visibilidad ---------------------------- */}
+          <Seccion titulo="Visibilidad y promoción">
+            <div className="space-y-3">
               {[
-                ["has_promotion", "En promoción"],
                 ["is_active", "Visible en la tienda"],
+                ["has_promotion", "En promoción"],
                 ["is_analogue", "Analógica (BNC)"],
               ].map(([k, label]) => (
                 <label key={k} className="flex cursor-pointer items-center gap-2.5 text-sm">
@@ -385,12 +374,38 @@ const ProductDetail = () => {
                 </label>
               ))}
             </div>
+
+            <div className="mt-4 border-t border-neutral-100 pt-4">
+              <Campo label="Descuento (%)" hint="Solo se aplica entre 1 y 50. Fuera de ese rango se ignora.">
+                <input
+                  type="number" min={0} max={100} step={1}
+                  value={form.discount}
+                  onChange={(e) => set("discount", Number(e.target.value))}
+                  className="input"
+                />
+              </Campo>
+            </div>
           </Seccion>
 
+          {/* --------------------------- Precio en MELI --------------------------- */}
+          <MeliPrice
+            productId={producto.id}
+            model={producto.model}
+            provider={producto.provider}
+            nuestroPrecio={conDescuento}
+            inicial={{
+              meli_price: producto.meli_price,
+              meli_url: producto.meli_url,
+              meli_checked_at: producto.meli_checked_at,
+            }}
+          />
+
+          {/* -------------------------------- Datos -------------------------------- */}
           <Seccion titulo="Datos">
             <dl className="space-y-2 text-xs">
               {[
                 ["Modelo", producto.model],
+                ["Imágenes", String(producto.gallery ?? 0)],
                 ["Actualizado", dateTime(producto.updated_at)],
               ].map(([k, v]) => (
                 <div key={String(k)} className="flex justify-between gap-3">

@@ -101,6 +101,11 @@ const GalleryEditor = ({
                   Nueva
                 </span>
               )}
+              {it.tipo === "meli" && (
+                <span className="absolute bottom-1.5 left-1.5 rounded bg-yellow-400 px-1.5 py-0.5 text-[10px] font-medium text-neutral-900">
+                  De ML
+                </span>
+              )}
 
               <button
                 type="button"
