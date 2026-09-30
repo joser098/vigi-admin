@@ -339,6 +339,7 @@ type Candidato = {
   gtin: string | null;
   thumbnail: string | null;
   exacto: boolean;
+  pictures: Array<{ id: string; url: string }>;
 };
 
 const Editor = ({
@@ -359,6 +360,7 @@ const Editor = ({
     quantity: listing.quantity ?? 0,
     attributes: listing.attributes ?? {},
     catalog_product_id: listing.catalog_product_id ?? "",
+    pictures: listing.pictures ?? null,
   });
   const [atributos, setAtributos] = useState<AtributoCat[] | null>(null);
   const [candidatos, setCandidatos] = useState<Candidato[] | null>(null);
@@ -390,6 +392,7 @@ const Editor = ({
         category_name: form.category_name,
         attributes: form.attributes,
         catalog_product_id: form.catalog_product_id.trim() || null,
+        pictures: form.pictures?.length ? form.pictures : null,
         ...(esPublicada ? {} : { quantity: Number(form.quantity) }),
       })
       .eq("product_id", producto.id);
@@ -412,6 +415,20 @@ const Editor = ({
       setBuscando(false);
     }
   };
+
+  // En una publicada, las fotos se guardan y se mandan a MercadoLibre.
+  const aplicarFotos = async () => {
+    setError("");
+    const { error: e } = await supabase
+      .from("meli_listings")
+      .update({ pictures: form.pictures?.length ? form.pictures : null })
+      .eq("product_id", producto.id);
+    if (e) return setError(e.message);
+    await accion("update", { pictures: true });
+  };
+
+  const fotosCambiaron =
+    JSON.stringify(form.pictures ?? null) !== JSON.stringify(listing.pictures ?? null);
 
   const causas = causasDe(listing.errors);
 
@@ -492,16 +509,35 @@ const Editor = ({
         </div>
       )}
 
-      {!esPublicada && (
-        <div>
+      <div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs text-neutral-600">
               GTIN (código de barras): <b>{form.attributes.GTIN || "sin cargar"}</b>
             </span>
+            <span className="text-xs text-neutral-600">
+              Fotos: <b>{form.pictures?.length ? `${form.pictures.length} del catálogo de ML` : "galería del producto"}</b>
+            </span>
             <button className="btn-ghost" onClick={buscarGtin} disabled={buscando}>
-              {buscando ? "Buscando…" : "Buscar GTIN en el catálogo de ML"}
+              {buscando ? "Buscando…" : "Buscar en el catálogo de ML"}
             </button>
           </div>
+
+          {form.pictures?.length ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {form.pictures.map((f) =>
+                f.url ? <img key={f.id} src={f.url} alt="" className="size-12 rounded bg-white object-contain" /> : null
+              )}
+              <button className="btn-ghost" onClick={() => setForm({ ...form, pictures: null })}>
+                Volver a la galería
+              </button>
+            </div>
+          ) : null}
+
+          {esPublicada && fotosCambiaron && (
+            <button className="btn-primary mt-2" onClick={aplicarFotos}>
+              Aplicar fotos en MercadoLibre
+            </button>
+          )}
           {candidatos && (
             <div className="mt-2 space-y-1">
               {candidatos.length === 0 && (
@@ -510,37 +546,53 @@ const Editor = ({
                 </p>
               )}
               {candidatos.map((c) => (
-                <div key={c.id} className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 text-xs">
-                  {c.thumbnail && <img src={c.thumbnail} alt="" className="size-8 rounded object-contain" />}
+                <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2 text-xs">
+                  <div className="flex gap-1">
+                    {(c.pictures.length ? c.pictures.slice(0, 4) : c.thumbnail ? [{ id: "t", url: c.thumbnail }] : []).map(
+                      (f) => (
+                        <img key={f.id} src={f.url} alt="" className="size-10 rounded object-contain" />
+                      )
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{c.name}</p>
                     <p className="text-neutral-500">
-                      {c.brand} · modelo {c.model ?? "—"} · GTIN {c.gtin ?? "—"}
+                      {c.brand} · modelo {c.model ?? "—"} · GTIN {c.gtin ?? "—"} · {c.pictures.length} fotos
                       {c.exacto && <span className="ml-2 text-green-700">mismo modelo</span>}
                     </p>
                   </div>
+                  {!esPublicada && (
+                    <button
+                      className="btn-ghost"
+                      disabled={!c.gtin}
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          attributes: { ...form.attributes, GTIN: c.gtin ?? "" },
+                          catalog_product_id: c.id,
+                        })
+                      }
+                    >
+                      Usar GTIN
+                    </button>
+                  )}
                   <button
                     className="btn-ghost"
-                    disabled={!c.gtin}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        attributes: { ...form.attributes, GTIN: c.gtin ?? "" },
-                        catalog_product_id: c.id,
-                      })
-                    }
+                    disabled={c.pictures.length === 0}
+                    onClick={() => setForm({ ...form, pictures: c.pictures })}
                   >
-                    Usar
+                    Usar fotos
                   </button>
                 </div>
               ))}
               <p className="text-[11px] text-neutral-400">
-                Elegir también fija la ficha del catálogo. Después, tocá Guardar cambios.
+                "Usar GTIN" también fija la ficha del catálogo. Las fotos del catálogo se usan solo en
+                MercadoLibre: la galería de la tienda no cambia. Elegí la ficha que es exactamente este producto.
+                {esPublicada ? " Después, tocá Aplicar fotos en MercadoLibre." : " Después, tocá Guardar cambios."}
               </p>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {!esPublicada && atributos && atributos.length > 0 && (
         <div>

@@ -223,5 +223,7 @@ export type MeliListing = {
   catalog_checked_at: string | null;
   // NULL = la de la configuración.
   installments: MeliCuotas | null;
+  // Fotos del catálogo de ML para esta publicación, por id. NULL = la galería.
+  pictures: Array<{ id: string; url?: string }> | null;
   updated_at: string;
 };
