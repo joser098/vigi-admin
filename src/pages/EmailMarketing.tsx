@@ -31,7 +31,7 @@ type CampoTexto = "preheader" | "titulo" | "bajada" | "cta" | "utm";
  *   - Editar una campaña ya enviada, ni una que está a mitad de camino. El
  *     registro tiene que seguir describiendo lo que la gente recibió, y los que
  *     ya la recibieron no pueden haber recibido otra cosa que los de mañana.
- *   - Pasarse de las cuotas gratuitas: Unitpost manda 200 por día y 5000 por
+ *   - Pasarse de las cuotas gratuitas: Unitpost manda 100 por día y 5000 por
  *     mes, y de Resend solo se usa lo que no hace falta para los mails de
  *     compra. Una lista de mil contactos sale en tandas.
  *
@@ -47,13 +47,14 @@ type Tab = keyof typeof TAB;
 // la que manda de verdad: acá son para pintar los números antes de apretar el
 // botón.
 //
-// Unitpost: 200 por día y 5000 por mes, menos un colchón para las pruebas.
+// Unitpost: 100 por día (anuncia 200, pero pasados los 100 rebotan) y 5000
+// por mes, menos un colchón para las pruebas.
 // Resend: 100 por día compartidos con los mails de compra, de los que las
-// campañas usan como mucho 60 y los otros 40 quedan reservados.
-const UNITPOST_DIARIO = 200;
+// campañas usan como mucho 70 y los otros 30 quedan reservados.
+const UNITPOST_DIARIO = 100;
 const UNITPOST_MENSUAL = 5000;
 const UNITPOST_COLCHON = 5;
-const RESEND_CAMPANAS = 60;
+const RESEND_CAMPANAS = 70;
 const LIMITE_DIARIO = UNITPOST_DIARIO - UNITPOST_COLCHON + RESEND_CAMPANAS;
 const TANDA = LIMITE_DIARIO;
 
@@ -294,7 +295,7 @@ const EmailMarketing = () => {
 
   // --- Envío por tandas -----------------------------------------------------
   // La lista no sale de una: entre Unitpost y el sobrante de Resend son unos
-  // 255 mails por día, y Unitpost corta a los 5000 del mes. Cada tanda le manda
+  // 165 mails por día, y Unitpost corta a los 5000 del mes. Cada tanda le manda
   // a los que todavía no la recibieron, así que se puede seguir mañana sin que
   // nadie la reciba dos veces.
   const yaRecibieron = editandoId ? (alcanzados[editandoId] ?? new Set<string>()) : new Set<string>();
