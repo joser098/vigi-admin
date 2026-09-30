@@ -36,6 +36,21 @@ type ProductoML = {
 
 type Resultado = { product_id: string; ok: boolean; message?: string };
 
+// Cómo se nombra cada acción en el aviso de progreso.
+const NOMBRE_ACCION: Record<string, string> = {
+  prepare: "Preparando",
+  quote: "Recalculando precio",
+  validate: "Validando",
+  publish: "Publicando",
+  reprice: "Actualizando precio",
+  update: "Actualizando",
+  installments: "Cambiando cuotas",
+  catalog_check: "Revisando catálogo",
+  catalog_optin: "Sumando a catálogo",
+  catalog_price: "Cambiando precio de catálogo",
+  reset: "Volviendo a borrador",
+};
+
 // De a cuántos productos se le manda a la function: cada uno son varias
 // llamadas a MercadoLibre y una Edge Function tiene tiempo limitado.
 const TANDA = 10;
@@ -900,7 +915,9 @@ const Meli = () => {
     const resultados: Resultado[] = [];
     try {
       for (let i = 0; i < ids.length; i += TANDA) {
-        setTrabajando(`${accion}: ${Math.min(i + TANDA, ids.length)} de ${ids.length}…`);
+        setTrabajando(
+          `${NOMBRE_ACCION[accion] ?? accion}: ${Math.min(i + TANDA, ids.length)} de ${ids.length}…`
+        );
         const r = await invocar<{ results: Resultado[] }>({
           action: accion,
           product_ids: ids.slice(i, i + TANDA),
@@ -1028,23 +1045,20 @@ const Meli = () => {
         <Stat label="Vendidas en ML" value={number(ventas)} hint="Según la última sincronización" />
       </div>
 
-      {error && <div className="mb-4"><ErrorBox>{error}</ErrorBox></div>}
-      {aviso && <p className="mb-2 text-sm text-green-700">{aviso}</p>}
-      {fallos.length > 0 && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <ul className="space-y-1 text-xs text-amber-800">
-            {fallos.map((f) => {
-              const p = productos.find((x) => x.id === f.product_id);
-              return (
-                <li key={f.product_id}>
-                  <b>{p?.model ?? f.product_id}</b>: {f.message}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-      {trabajando && <p className="mb-4 text-sm text-neutral-500">{trabajando}</p>}
+      <Avisos
+        trabajando={trabajando}
+        aviso={aviso}
+        error={error}
+        fallos={fallos.map((f) => ({
+          ...f,
+          modelo: productos.find((x) => x.id === f.product_id)?.model ?? f.product_id,
+        }))}
+        onCerrar={() => {
+          setAviso("");
+          setError("");
+          setFallos([]);
+        }}
+      />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
@@ -1159,6 +1173,71 @@ const Meli = () => {
         </div>
       )}
     </>
+  );
+};
+
+/**
+ * Avisos de las acciones, en un toast fijo abajo a la derecha.
+ *
+ * Antes eran párrafos arriba de la tabla: con la página scrolleada hasta el
+ * producto, el "listo" o el error quedaban fuera de la vista y no se sabía si
+ * la acción había terminado. El éxito se cierra solo; los errores y avisos por
+ * producto quedan hasta que se cierran, porque hay que leerlos.
+ */
+const Avisos = ({
+  trabajando,
+  aviso,
+  error,
+  fallos,
+  onCerrar,
+}: {
+  trabajando: string;
+  aviso: string;
+  error: string;
+  fallos: Array<Resultado & { modelo: string }>;
+  onCerrar: () => void;
+}) => {
+  const hayProblemas = Boolean(error) || fallos.length > 0;
+
+  useEffect(() => {
+    if (!aviso || hayProblemas || trabajando) return;
+    const t = setTimeout(onCerrar, 5000);
+    return () => clearTimeout(t);
+  }, [aviso, hayProblemas, trabajando]);
+
+  if (!trabajando && !aviso && !hayProblemas) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 w-[min(26rem,calc(100vw-2rem))]" role="status" aria-live="polite">
+      <div className="card space-y-2 p-4 shadow-lg">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1 space-y-1 text-sm">
+            {trabajando && (
+              <p className="flex items-center gap-2 text-neutral-600">
+                <span className="size-3 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700" />
+                {trabajando}
+              </p>
+            )}
+            {aviso && <p className="font-medium text-green-700">{aviso}</p>}
+            {error && <p className="text-red-700">{error}</p>}
+          </div>
+          {!trabajando && (
+            <button className="text-neutral-400 hover:text-neutral-700" onClick={onCerrar} aria-label="Cerrar">
+              ✕
+            </button>
+          )}
+        </div>
+        {fallos.length > 0 && (
+          <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {fallos.map((f) => (
+              <li key={f.product_id}>
+                <b>{f.modelo}</b>: {f.message}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 };
 
