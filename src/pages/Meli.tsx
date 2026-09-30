@@ -611,6 +611,15 @@ const Editor = ({
             <button className="btn-ghost" onClick={() => accion("reprice")}>
               Actualizar precio
             </button>
+            {(listing.status === "closed" || listing.status === "inactive") && (
+              <button
+                className="btn-ghost"
+                title="La publicación vieja no se reactiva: esto deja la fila lista para publicar una nueva"
+                onClick={() => accion("reset")}
+              >
+                Volver a borrador
+              </button>
+            )}
           </>
         ) : (
           <>
