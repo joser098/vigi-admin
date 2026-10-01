@@ -76,12 +76,12 @@ const inicioMesUTC = () => {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
 };
 
-// Mails de campaña con status "sent" por un proveedor desde una fecha.
+// Mails de marketing enviados por un proveedor desde una fecha. La vista junta
+// campañas y recupero de carritos, que comparten la cuota.
 const contarEnviados = (proveedor: "unitpost" | "resend", desde: string) =>
   supabase
-    .from("marketing_sends")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "sent")
+    .from("email_quota_sends")
+    .select("provider", { count: "exact", head: true })
     .eq("provider", proveedor)
     .gte("created_at", desde);
 
@@ -156,7 +156,12 @@ const EmailMarketing = () => {
         // Los cupones activos, para poder colgarle uno a la campaña. Es lo
         // único que después contesta "¿esto vendió?": el código se tipea en el
         // carrito y cada canje queda en coupon_redemptions con su orden.
-        supabase.from("coupons").select("*").eq("is_active", true).order("code"),
+        supabase
+          .from("coupons")
+          .select("*")
+          .eq("is_active", true)
+          .eq("origin", "manual")
+          .order("code"),
       ]);
 
       if (c.error) throw new Error(c.error.message);

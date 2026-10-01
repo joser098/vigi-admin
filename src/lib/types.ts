@@ -93,6 +93,10 @@ export type Coupon = {
   starts_at: string | null;
   ends_at: string | null;
   is_active: boolean;
+  // NULL = público. Con valor, cupón personal de ese cliente (recupero de
+  // carritos): el panel no los crea.
+  customer_id: string | null;
+  origin: "manual" | "cart_recovery";
   created_at: string;
   updated_at: string;
 };
@@ -226,4 +230,86 @@ export type MeliListing = {
   // Fotos del catálogo de ML para esta publicación, por id. NULL = la galería.
   pictures: Array<{ id: string; url?: string }> | null;
   updated_at: string;
+};
+
+// --- Carritos abandonados ---------------------------------------------------
+// Migración 0021 de vigi-api. Los mails los manda la Edge Function
+// `cart-recovery`; el panel configura, mira y prueba.
+
+export type CartRecoverySettings = {
+  is_active: boolean;
+  step1_hours: number;
+  step2_hours: number;
+  step3_hours: number;
+  gateway_fee_pct: number;
+  min_net_margin_pct: number;
+  max_discount_pct: number;
+  min_discount_pct: number;
+  coupon_valid_hours: number;
+  coupon_cooldown_days: number;
+  daily_limit: number;
+  updated_at: string;
+};
+
+export type OpenCartItem = {
+  id: string;
+  model: string;
+  title: string;
+  thumbnail: string | null;
+  quantity: number;
+  unit_price: number;
+  price_original: number | null;
+};
+
+/** Una fila de `admin_cart_recovery_open_carts()`. */
+export type OpenCart = {
+  cart_id: string;
+  customer_id: string;
+  email: string;
+  name: string | null;
+  last_name: string | null;
+  cart_updated_at: string;
+  units: number;
+  amount: number;
+  // NULL si algún producto no tiene costo cargado.
+  cost: number | null;
+  items: OpenCartItem[];
+  last_step: number | null;
+  last_sent_at: string | null;
+  next_step: number | null;
+  due: boolean;
+  unsubscribed: boolean;
+  coupon_blocked: boolean;
+  margin_before_pct: number | null;
+  // NULL = el margen no aguanta el descuento mínimo (o falta el costo).
+  discount_pct: number | null;
+  discount_amount: number | null;
+  margin_after_pct: number | null;
+};
+
+/** Una fila de `admin_cart_recovery_episodes`. */
+export type RecoveryEpisode = {
+  cart_id: string;
+  cart_updated_at: string;
+  customer_id: string | null;
+  email: string;
+  name: string | null;
+  last_name: string | null;
+  cart_amount: number;
+  margin_before_pct: number | null;
+  last_step: number | null;
+  first_sent_at: string | null;
+  last_activity_at: string;
+  coupon_id: string | null;
+  coupon_code: string | null;
+  coupon_ends_at: string | null;
+  discount_pct: number | null;
+  discount_amount: number | null;
+  margin_after_pct: number | null;
+  had_failures: boolean;
+  order_id: string | null;
+  order_amount: number | null;
+  order_discount: number | null;
+  order_created_at: string | null;
+  used_coupon: boolean;
 };

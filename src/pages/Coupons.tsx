@@ -43,6 +43,9 @@ const Coupons = () => {
       const { data, error } = await supabase
         .from("coupons")
         .select("*")
+        // Los cupones personales del recupero de carritos son cientos y de un
+        // solo uso: se miran en Carritos, no acá.
+        .eq("origin", "manual")
         .order("created_at", { ascending: false });
 
       if (error) setError(error.message);
