@@ -27,7 +27,28 @@ export type Product = {
   meli_url: string | null;
   meli_title: string | null;
   meli_checked_at: string | null;
+  // Bulto de envío propio (migración 0023). Las cuatro o ninguna: NULL = usar
+  // el perfil de la categoría.
+  weight_grams: number | null;
+  height_cm: number | null;
+  width_cm: number | null;
+  length_cm: number | null;
+  dims_source: DimsSource | null;
+  dims_url: string | null;
+  dims_checked_at: string | null;
   updated_at: string;
+};
+
+export type DimsSource = "official" | "meli" | "manual";
+
+export type ShippingProfile = {
+  id: string;
+  name: string;
+  weight_grams: number;
+  height_cm: number;
+  width_cm: number;
+  length_cm: number;
+  notes: string | null;
 };
 
 export type OrderItem = {

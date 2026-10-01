@@ -8,6 +8,7 @@ import { Badge, Loading, ErrorBox, Empty } from "@/components/ui";
 import GalleryEditor from "@/components/GalleryEditor";
 import MeliFotos from "@/components/MeliFotos";
 import { MeliPrice } from "../components/MeliPrice";
+import { EnvioMedidas } from "@/components/EnvioMedidas";
 import type { Product } from "@/lib/types";
 
 // Lo que el panel puede escribir. Coincide con los GRANT de la base: cost,
@@ -397,6 +398,23 @@ const ProductDetail = () => {
               meli_price: producto.meli_price,
               meli_url: producto.meli_url,
               meli_checked_at: producto.meli_checked_at,
+            }}
+          />
+
+          {/* -------------------------------- Envío -------------------------------- */}
+          <EnvioMedidas
+            productId={producto.id}
+            model={producto.model}
+            provider={producto.provider}
+            category={producto.category}
+            inicial={{
+              weight_grams: producto.weight_grams,
+              height_cm: producto.height_cm,
+              width_cm: producto.width_cm,
+              length_cm: producto.length_cm,
+              dims_source: producto.dims_source,
+              dims_url: producto.dims_url,
+              dims_checked_at: producto.dims_checked_at,
             }}
           />
 
