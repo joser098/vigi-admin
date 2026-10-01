@@ -7,6 +7,7 @@ const links = [
   { to: "/productos", label: "Productos" },
   { to: "/importar", label: "Importar" },
   { to: "/pagos", label: "Pagos" },
+  { to: "/clientes", label: "Clientes" },
   { to: "/carritos", label: "Carritos" },
   { to: "/cupones", label: "Cupones" },
   { to: "/email", label: "Email" },

@@ -42,6 +42,12 @@ const CAMPOS: Array<{
   { key: "coupon_valid_hours", label: "Validez del cupón", ayuda: "Desde que sale el mail", sufijo: "h" },
   { key: "coupon_cooldown_days", label: "Un cupón cada", ayuda: "Por cliente", sufijo: "días" },
   { key: "daily_limit", label: "Tope diario", ayuda: "Mails de recupero por día", sufijo: "mails" },
+  {
+    key: "max_cart_age_days",
+    label: "Carritos de hasta",
+    ayuda: "Más viejos no aparecen ni reciben mails",
+    sufijo: "días",
+  },
 ];
 
 const nombreDe = (x: { name: string | null; last_name: string | null; email: string }) =>
@@ -331,9 +337,18 @@ const Carritos = () => {
       </section>
 
       {/* --- Carritos abiertos ------------------------------------------- */}
-      <h2 className="mb-3 mt-8 text-sm font-medium">Carritos abiertos</h2>
+      <h2 className="mb-3 mt-8 text-sm font-medium">
+        Carritos abiertos{" "}
+        <span className="font-normal text-neutral-400">
+          · tocados en los últimos {number(ajustes?.max_cart_age_days ?? 5)} días
+        </span>
+      </h2>
       {carritos.length === 0 ? (
-        <Empty>No hay carritos abandonados en este momento.</Empty>
+        <Empty>
+          No hay carritos abandonados de los últimos {number(ajustes?.max_cart_age_days ?? 5)} días.
+          Los más viejos se ven en Clientes; para que entren al recupero, subí "Carritos de hasta" en
+          la configuración.
+        </Empty>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full">

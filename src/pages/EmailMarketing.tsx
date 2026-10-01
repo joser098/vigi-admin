@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase, traerTodo } from "@/lib/supabase";
 import { number, money, date, dateTime } from "@/lib/format";
 import { PageTitle, Stat, Badge, Empty, Loading, ErrorBox } from "@/components/ui";
@@ -9,7 +10,8 @@ import {
   type PlantillaId,
   type Ajustes,
 } from "@/lib/emailTemplates";
-import type { MarketingCampaign, MarketingContact, Product, Coupon } from "@/lib/types";
+import type { MarketingCampaign, MarketingContact, Product, Coupon, CustomerOverview } from "@/lib/types";
+import { SEGMENTOS, SEGMENTO_IDS, esSegmento } from "@/lib/segmentos";
 
 // Los campos de `Ajustes` que son texto libre y se editan con un input. El
 // cupón no entra: es una fila de la base, se elige de una lista.
@@ -60,7 +62,8 @@ const TANDA = LIMITE_DIARIO;
 
 // "Vigi" y no vacío: sin nombre de remitente, la bandeja muestra la parte de
 // antes del arroba de la dirección —"marketing"—, que no le dice nada a nadie.
-const VACIA = { name: "", subject: "", from_name: "Vigi", html: "" };
+// `segment` vacío = todos los suscriptos.
+const VACIA = { name: "", subject: "", from_name: "Vigi", html: "", segment: "" };
 
 // Más de esto en un mail no se lee, y la grilla se vuelve un catálogo.
 const MAX_PRODUCTOS = 8;
@@ -96,6 +99,10 @@ const EmailMarketing = () => {
   // sus envíos sería cargar el historial entero al navegador.
   const [alcanzados, setAlcanzados] = useState<Record<string, Set<string>>>({});
   const [uso, setUso] = useState({ unitpostHoy: 0, unitpostMes: 0, resendHoy: 0 });
+  // Emails de cada segmento de clientes, para contar a cuántos les llega una
+  // campaña por segmento. Los mismos que usa marketing-send al mandar.
+  const [porSegmento, setPorSegmento] = useState<Record<string, Set<string>>>({});
+  const [params, setParams] = useSearchParams();
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -166,6 +173,14 @@ const EmailMarketing = () => {
 
       if (c.error) throw new Error(c.error.message);
 
+      const clientes = await traerTodo<Pick<CustomerOverview, "email" | "segments">>((desde, hasta) =>
+        supabase.rpc("admin_customers").select("email,segments").range(desde, hasta)
+      );
+      const segs: Record<string, Set<string>> = {};
+      for (const cl of clientes) {
+        for (const sg of cl.segments) (segs[sg] ??= new Set()).add(String(cl.email).toLowerCase());
+      }
+
       const listaCampanas = (c.data ?? []) as MarketingCampaign[];
       const abiertas = listaCampanas.filter((x) => x.status !== "sent").map((x) => x.id);
 
@@ -191,6 +206,7 @@ const EmailMarketing = () => {
       setAlcanzados(mapa);
       setUso({ unitpostHoy: uh.count ?? 0, unitpostMes: um.count ?? 0, resendHoy: rh.count ?? 0 });
       setCupones((cu.data ?? []) as Coupon[]);
+      setPorSegmento(segs);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -203,6 +219,26 @@ const EmailMarketing = () => {
   }, []);
 
   const suscriptos = useMemo(() => contactos.filter((c) => c.is_subscribed), [contactos]);
+
+  // A quién le llega una campaña: todos los suscriptos, o los del segmento.
+  const audiencia = (segmento: string | null | undefined) =>
+    segmento
+      ? suscriptos.filter((c) => porSegmento[segmento]?.has(c.email.toLowerCase()))
+      : suscriptos;
+
+  // Desde Clientes se llega con ?segmento=…: arranca una campaña nueva para
+  // ese segmento.
+  useEffect(() => {
+    const sg = params.get("segmento");
+    if (cargando || !esSegmento(sg)) return;
+
+    setForm({ ...VACIA, segment: sg });
+    setEditandoId(null);
+    setPruebaHecha(false);
+    setTab("campanas");
+    params.delete("segmento");
+    setParams(params, { replace: true });
+  }, [cargando]);
 
   const set = <K extends keyof typeof VACIA>(k: K, v: string) => {
     setForm((f) => ({ ...f, [k]: v }));
@@ -223,6 +259,7 @@ const EmailMarketing = () => {
       subject: c.subject,
       from_name: c.from_name ?? "",
       html: c.html,
+      segment: c.segment ?? "",
     });
     setEditandoId(c.id);
     setPruebaHecha(false);
@@ -245,6 +282,7 @@ const EmailMarketing = () => {
       subject: form.subject.trim(),
       from_name: form.from_name.trim() || null,
       html: form.html,
+      segment: form.segment || null,
     };
 
     const { data, error } = editandoId
@@ -304,8 +342,8 @@ const EmailMarketing = () => {
   // a los que todavía no la recibieron, así que se puede seguir mañana sin que
   // nadie la reciba dos veces.
   const yaRecibieron = editandoId ? (alcanzados[editandoId] ?? new Set<string>()) : new Set<string>();
-  const pendientes = suscriptos.filter((c) => !yaRecibieron.has(c.email.toLowerCase()));
-  const alcanzadosCount = suscriptos.length - pendientes.length;
+  const pendientes = audiencia(form.segment).filter((c) => !yaRecibieron.has(c.email.toLowerCase()));
+  const alcanzadosCount = audiencia(form.segment).length - pendientes.length;
   const hoy = uso.unitpostHoy + uso.resendHoy;
   const libreUnitpost = Math.max(
     0,
@@ -328,7 +366,9 @@ const EmailMarketing = () => {
     // Última barrera antes de escribirle a gente de verdad. La confirmación
     // dice los números exactos justamente para que se lean.
     const ok = window.confirm(
-      `Vas a enviar "${form.subject}" a ${vanAhora} contactos.\n\n` +
+      `Vas a enviar "${form.subject}" a ${vanAhora} contactos` +
+        (esSegmento(form.segment) ? ` del segmento ${SEGMENTOS[form.segment].label}` : "") +
+        `.\n\n` +
         `Después de esta tanda quedan ${pendientes.length - vanAhora} pendientes.\n` +
         `Esto no se puede deshacer. ¿Seguimos?`
     );
@@ -603,6 +643,25 @@ const EmailMarketing = () => {
                 </p>
               </div>
               <div className="sm:col-span-2">
+                <label className="label">A quién</label>
+                <select
+                  value={form.segment}
+                  onChange={(e) => set("segment", e.target.value)}
+                  className="input"
+                >
+                  <option value="">Todos los suscriptos ({number(suscriptos.length)})</option>
+                  {SEGMENTO_IDS.map((sg) => (
+                    <option key={sg} value={sg}>
+                      {SEGMENTOS[sg].label} ({number(audiencia(sg).length)}) — {SEGMENTOS[sg].descripcion}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-neutral-400">
+                  El segmento se recalcula en cada tanda: si alguien compra entre una tanda y otra
+                  y sale del segmento, no la recibe.
+                </p>
+              </div>
+              <div className="sm:col-span-2">
                 <label className="label">Asunto</label>
                 <input
                   value={form.subject}
@@ -779,7 +838,7 @@ const EmailMarketing = () => {
                     const faltan =
                       c.status === "sent"
                         ? 0
-                        : suscriptos.filter(
+                        : audiencia(c.segment).filter(
                             (s) => !(alcanzados[c.id] ?? new Set()).has(s.email.toLowerCase())
                           ).length;
 

@@ -1,3 +1,5 @@
+import type { SegmentoId } from "./segmentos";
+
 export type Product = {
   id: string;
   model: string;
@@ -156,6 +158,8 @@ export type MarketingCampaign = {
   from_name: string | null;
   html: string;
   status: "draft" | "sending" | "sent" | "failed";
+  // NULL = todos los suscriptos. Ver lib/segmentos.ts.
+  segment: SegmentoId | null;
   sent_at: string | null;
   sent_count: number;
   failed_count: number;
@@ -248,6 +252,7 @@ export type CartRecoverySettings = {
   coupon_valid_hours: number;
   coupon_cooldown_days: number;
   daily_limit: number;
+  max_cart_age_days: number;
   updated_at: string;
 };
 
@@ -312,4 +317,56 @@ export type RecoveryEpisode = {
   order_discount: number | null;
   order_created_at: string | null;
   used_coupon: boolean;
+};
+
+// --- Clientes ---------------------------------------------------------------
+
+/** Una fila de `admin_customers()` (migración 0022). */
+export type CustomerOverview = {
+  customer_id: string;
+  email: string;
+  name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  is_guest: boolean;
+  register_date: string;
+  last_login: string | null;
+  province: string | null;
+  location: string | null;
+  orders_count: number;
+  total_spent: number;
+  avg_ticket: number | null;
+  first_order_at: string | null;
+  last_order_at: string | null;
+  cart_units: number;
+  cart_amount: number;
+  cart_updated_at: string | null;
+  favorites: number;
+  is_subscribed: boolean;
+  segments: SegmentoId[];
+};
+
+/** Lo que devuelve `admin_customer_extras(id)`. */
+export type CustomerExtras = {
+  cart: {
+    updated_at: string;
+    items: Array<{
+      id: string;
+      model: string;
+      title: string;
+      thumbnail: string | null;
+      quantity: number;
+      unit_price: number;
+      is_active: boolean;
+    }>;
+  } | null;
+  favorites: Array<{
+    id: string;
+    model: string;
+    title: string;
+    thumbnail: string | null;
+    price: number;
+    is_active: boolean;
+    added_at: string;
+  }>;
 };
