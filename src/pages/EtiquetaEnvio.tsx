@@ -78,7 +78,7 @@ export const Etiqueta = ({ orden, cliente }: { orden: Order; cliente: Customer |
 
       {/* -------------------------------- Remitente -------------------------------- */}
       <p className="mt-[2mm] text-[7.5pt] leading-snug">
-        <span className="font-bold uppercase">Remitente:</span> {VIGI.nombre} · {VIGI.direccion} · {VIGI.web}
+        <span className="font-bold uppercase">Remitente:</span> {VIGI.nombre} · Tel. {VIGI.telefono} · {VIGI.web}
       </p>
 
       {/* ------------------------------- Destinatario ------------------------------- */}
@@ -101,11 +101,9 @@ export const Etiqueta = ({ orden, cliente }: { orden: Order; cliente: Customer |
           <p className="mt-[2mm] text-[10pt] font-bold">SIN DIRECCIÓN CARGADA</p>
         )}
 
-        <div className="mt-[3mm] flex items-end justify-between gap-[3mm]">
-          <div className="text-[8.5pt] leading-snug">
-            {cliente?.phone && <p>Tel: <b>{cliente.phone}</b></p>}
-            {cliente?.dni && <p>DNI: <b>{cliente.dni}</b></p>}
-          </div>
+        {/* Sin teléfono ni DNI del cliente: la etiqueta la ve cualquiera que
+            toque el paquete, y el correo no los necesita para entregar. */}
+        <div className="mt-[3mm] flex justify-end">
           {d?.zip_code && (
             <div className="rounded-[1.5mm] bg-black px-[3mm] py-[1.5mm] text-center text-white">
               <p className="text-[6.5pt] font-bold leading-none">CP</p>
@@ -116,9 +114,11 @@ export const Etiqueta = ({ orden, cliente }: { orden: Order; cliente: Customer |
       </div>
 
       {/* ---------------------------------- Frágil ---------------------------------- */}
+      {/* Sin decir qué hay adentro: anunciar electrónica en la caja es
+          invitar a que se pierda en el camino. */}
       <div className="mt-[3mm] flex items-center justify-center gap-[2mm] bg-black py-[1.5mm] text-white">
         <span className="text-[10pt] font-black tracking-[0.2em]">FRÁGIL</span>
-        <span className="text-[7pt]">· Equipos electrónicos · Manipular con cuidado</span>
+        <span className="text-[7pt]">· Manipular con cuidado</span>
       </div>
 
       {/* ---------------------------------- Pedido ---------------------------------- */}

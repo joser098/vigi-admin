@@ -3,12 +3,12 @@ import type { ReactNode } from "react";
 /**
  * Datos de VIGI que van impresos en etiquetas e insertos.
  *
- * La dirección es la de la oficina de Caballito, la misma que figuraba como
- * punto de retiro en el checkout. Si se despacha desde otro lado, se cambia acá.
+ * En la etiqueta el remitente va con teléfono y no con dirección. El teléfono
+ * es el de la tienda (vigi-app: services/contacto.ts).
  */
 export const VIGI = {
   nombre: "VIGI",
-  direccion: "Figueroa 973, CABA",
+  telefono: "11 2603 9243",
   web: "vigi.com.ar",
   instagram: "@vigi.cam_",
 };
