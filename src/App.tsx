@@ -18,6 +18,8 @@ import Carritos from "@/pages/Carritos";
 import Clientes from "@/pages/Clientes";
 import ClienteDetalle from "@/pages/ClienteDetalle";
 import Envios from "@/pages/Envios";
+import EtiquetaEnvio from "@/pages/EtiquetaEnvio";
+import InsertoMeli from "@/pages/InsertoMeli";
 
 // El panel entero está detrás del guard. No hay ruta que se pueda alcanzar sin
 // sesión y sin estar en la whitelist — y aunque se pudiera, RLS no devolvería
@@ -58,6 +60,9 @@ const Guard = () => {
         <Route path="cupones/:id" element={<CouponDetail />} />
         <Route path="*" element={<Dashboard />} />
       </Route>
+      {/* Hojas para imprimir: fuera del Layout, sin menú ni encabezado. */}
+      <Route path="ordenes/:id/etiqueta" element={<EtiquetaEnvio />} />
+      <Route path="meli/inserto" element={<InsertoMeli />} />
     </Routes>
   );
 };

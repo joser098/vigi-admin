@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 
 const links = [
@@ -22,12 +22,12 @@ const Layout = () => {
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
-              V
-            </div>
-            <span className="text-sm font-semibold tracking-tight">Admin</span>
-          </div>
+          <Link to="/" className="flex shrink-0 items-center gap-2">
+            <img src="/vigi.svg" alt="VIGI" className="h-6" />
+            <span className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              Admin
+            </span>
+          </Link>
 
           <nav className="flex items-center gap-1">
             {links.map((l) => (

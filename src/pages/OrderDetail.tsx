@@ -83,17 +83,22 @@ const OrderDetail = () => {
 
       <PageTitle
         action={
-          // Controlado por orden.status: elegir otro abre el modal y el
-          // selector no cambia hasta que se confirma.
-          <select
-            value={orden.status}
-            onChange={(e) => { setAviso(null); setDestino(e.target.value); }}
-            className="input max-w-[12rem]"
-          >
-            {estados.map((e) => (
-              <option key={e.code} value={e.code}>{e.label}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <a href={`/ordenes/${orden.id}/etiqueta`} target="_blank" rel="noopener" className="btn-ghost shrink-0">
+              Imprimir etiqueta
+            </a>
+            {/* Controlado por orden.status: elegir otro abre el modal y el
+                selector no cambia hasta que se confirma. */}
+            <select
+              value={orden.status}
+              onChange={(e) => { setAviso(null); setDestino(e.target.value); }}
+              className="input max-w-[12rem]"
+            >
+              {estados.map((e) => (
+                <option key={e.code} value={e.code}>{e.label}</option>
+              ))}
+            </select>
+          </div>
         }
       >
         Orden {orden.payment_id}

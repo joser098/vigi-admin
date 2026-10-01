@@ -1008,9 +1008,14 @@ const Meli = () => {
     <>
       <PageTitle
         action={
-          <button className="btn-ghost" onClick={sincronizar} disabled={!!trabajando || !estado?.connected}>
-            Sincronizar con MercadoLibre
-          </button>
+          <div className="flex items-center gap-2">
+            <a href="/meli/inserto" target="_blank" rel="noopener" className="btn-ghost">
+              Inserto para paquetes
+            </a>
+            <button className="btn-ghost" onClick={sincronizar} disabled={!!trabajando || !estado?.connected}>
+              Sincronizar con MercadoLibre
+            </button>
+          </div>
         }
       >
         MercadoLibre
