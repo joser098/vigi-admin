@@ -68,6 +68,10 @@ export type Order = {
   coupon_code: string | null;
   status: string;
   ip_address: string | null;
+  // Seguimiento del envío (migración 0024). Lo usa el mail de "En camino".
+  carrier: string | null;
+  tracking_number: string | null;
+  tracking_url: string | null;
   created_at: string;
   order_items?: OrderItem[];
   customers?: Customer | null;

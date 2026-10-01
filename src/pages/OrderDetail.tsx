@@ -4,6 +4,8 @@ import { supabase } from "@/lib/supabase";
 import { money, dateTime } from "@/lib/format";
 import { PageTitle, Badge, Loading, ErrorBox, Empty } from "@/components/ui";
 import type { Order, OrderStatus, Customer } from "@/lib/types";
+import { PedidoAvisos, type Aviso } from "@/components/PedidoAvisos";
+import { CambioEstadoModal, type ResultadoCambio } from "@/components/CambioEstadoModal";
 
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -11,6 +13,10 @@ const OrderDetail = () => {
   const [cliente, setCliente] = useState<Customer | null>(null);
   const [pago, setPago] = useState<Record<string, any> | null>(null);
   const [estados, setEstados] = useState<OrderStatus[]>([]);
+  const [avisos, setAvisos] = useState<Aviso[]>([]);
+  // Estado elegido en el selector, esperando confirmación en el modal.
+  const [destino, setDestino] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
 
@@ -27,23 +33,37 @@ const OrderDetail = () => {
     const o = data as unknown as Order;
     setOrden(o);
 
-    const [c, p, s] = await Promise.all([
+    const [c, p, s, n] = await Promise.all([
       supabase.from("customers").select("*, addresses(*)").eq("id", o.customer_id).maybeSingle(),
       supabase.from("payment_orders").select("*").eq("gateway_payment_id", o.payment_id).maybeSingle(),
       supabase.from("order_statuses").select("*").order("sort_order"),
+      supabase.from("order_notifications").select("*").eq("order_id", o.id).order("sent_at"),
     ]);
 
     setCliente((c.data ?? null) as Customer | null);
     setPago((p.data ?? null) as Record<string, any> | null);
     setEstados((s.data ?? []) as OrderStatus[]);
+    setAvisos((n.data ?? []) as Aviso[]);
     setCargando(false);
   };
 
   useEffect(() => { cargar(); }, [id]);
 
-  const cambiarEstado = async (status: string) => {
-    const { error } = await supabase.from("orders").update({ status }).eq("id", id);
-    if (error) { setError(error.message); return; }
+  const etiquetas = Object.fromEntries(estados.map((e) => [e.code, e.label]));
+
+  // Último mail de un estado que salió bien: el modal avisa si ya se mandó.
+  const ultimoEnviado = (status: string) =>
+    [...avisos].reverse().find((a) => a.status === status && !a.error)?.sent_at ?? null;
+
+  const cambioHecho = async (r: ResultadoCambio) => {
+    setDestino(null);
+    setAviso(
+      !r.mail
+        ? { ok: true, texto: "Estado actualizado." }
+        : r.mail.ok
+          ? { ok: true, texto: `Listo: se le mandó el mail a ${r.mail.email}.` }
+          : { ok: false, texto: `El estado cambió, pero el mail no salió: ${r.mail.error}. Podés reenviarlo desde "Mails de este pedido".` }
+    );
     await cargar();
   };
 
@@ -63,9 +83,11 @@ const OrderDetail = () => {
 
       <PageTitle
         action={
+          // Controlado por orden.status: elegir otro abre el modal y el
+          // selector no cambia hasta que se confirma.
           <select
             value={orden.status}
-            onChange={(e) => cambiarEstado(e.target.value)}
+            onChange={(e) => { setAviso(null); setDestino(e.target.value); }}
             className="input max-w-[12rem]"
           >
             {estados.map((e) => (
@@ -78,9 +100,30 @@ const OrderDetail = () => {
       </PageTitle>
 
       {error && <div className="mb-6"><ErrorBox>{error}</ErrorBox></div>}
+      {aviso && (
+        <div
+          className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+            aviso.ok ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {aviso.texto}
+        </div>
+      )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <section className="card overflow-hidden lg:col-span-2">
+      {destino && (
+        <CambioEstadoModal
+          orden={orden}
+          destino={destino}
+          etiquetas={etiquetas}
+          emailCliente={cliente?.email ?? null}
+          yaEnviado={ultimoEnviado(destino)}
+          onCerrar={() => setDestino(null)}
+          onHecho={cambioHecho}
+        />
+      )}
+
+      <div className="grid items-start gap-6 lg:grid-cols-3">
+        <section className="card overflow-hidden lg:col-span-2 lg:row-start-1">
           <div className="border-b border-neutral-200 px-5 py-3.5">
             <h2 className="text-sm font-medium">Productos</h2>
           </div>
@@ -118,7 +161,17 @@ const OrderDetail = () => {
           </table>
         </section>
 
-        <div className="space-y-6">
+        <div className="space-y-6 lg:col-span-2 lg:row-start-2">
+          <PedidoAvisos
+            orden={orden}
+            avisos={avisos}
+            etiquetas={etiquetas}
+            onGuardado={cargar}
+            onReenviar={(status) => { setAviso(null); setDestino(status); }}
+          />
+        </div>
+
+        <div className="space-y-6 lg:col-start-3 lg:row-span-2 lg:row-start-1">
           <section className="card p-5">
             <h2 className="mb-4 text-sm font-medium">Cliente</h2>
             {cliente ? (
