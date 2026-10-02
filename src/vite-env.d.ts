@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string;
   readonly VITE_SUPABASE_ANON_KEY: string;
   readonly VITE_ASSETS_URL: string;
+  readonly VITE_PROVEEDOR_SHEET_URL?: string;
 }
 
 interface ImportMeta {
