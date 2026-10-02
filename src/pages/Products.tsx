@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { money, number } from "@/lib/format";
 import { getComision, gananciaNeta } from "@/lib/comision";
@@ -77,8 +77,43 @@ const ThOrden = ({
   );
 };
 
+/**
+ * Mostrar u ocultar desde el listado, sin entrar al detalle. Escribe al toque:
+ * es un solo campo, se ve el resultado en la fila y se deshace con otro clic.
+ */
+const SwitchVisible = ({
+  activo,
+  ocupado,
+  onCambiar,
+}: {
+  activo: boolean;
+  ocupado: boolean;
+  onCambiar: (v: boolean) => void;
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={activo}
+    aria-label={activo ? "Ocultar de la tienda" : "Mostrar en la tienda"}
+    title={activo ? "Visible en la tienda" : "Oculto"}
+    disabled={ocupado}
+    onClick={() => onCambiar(!activo)}
+    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition disabled:opacity-50 ${
+      activo ? "bg-green-600" : "bg-neutral-300"
+    }`}
+  >
+    <span
+      className={`inline-block size-4 rounded-full bg-white shadow transition ${
+        activo ? "translate-x-[18px]" : "translate-x-0.5"
+      }`}
+    />
+  </button>
+);
+
 const Products = () => {
+  const location = useLocation();
   const [productos, setProductos] = useState<Product[]>([]);
+  const [cambiando, setCambiando] = useState<Record<string, boolean>>({});
   const [categorias, setCategorias] = useState<string[]>([]);
   // Los filtros viven en la URL y no en el estado. Así volver del detalle de un
   // producto con el botón atrás devuelve el listado como estaba —que antes se
@@ -179,6 +214,27 @@ const Products = () => {
 
   useEffect(() => setVisibles(PAGINA), [busqueda, categoria, soloPromo]);
 
+  // Optimista: la fila cambia ya y, si la base lo rechaza, vuelve atrás.
+  const cambiarVisible = async (id: string, visible: boolean) => {
+    const poner = (v: boolean) =>
+      setProductos((ps) => ps.map((p) => (p.id === id ? { ...p, is_active: v } : p)));
+
+    setError("");
+    setCambiando((c) => ({ ...c, [id]: true }));
+    poner(visible);
+
+    const { error: e } = await supabase
+      .from("products")
+      .update({ is_active: visible })
+      .eq("id", id);
+
+    if (e) {
+      poner(!visible);
+      setError(e.message);
+    }
+    setCambiando((c) => ({ ...c, [id]: false }));
+  };
+
   if (cargando) return <Loading />;
 
   return (
@@ -270,7 +326,14 @@ const Products = () => {
                       )}
                     </td>
                     <td className="td">
-                      <Link to={`/productos/${p.id}`} className="font-medium text-neutral-900 hover:underline">
+                      {/* El listado tal como está (búsqueda, filtros, orden) viaja
+                          al detalle para que "← Productos" vuelva acá y no al
+                          listado pelado. */}
+                      <Link
+                        to={`/productos/${p.id}`}
+                        state={{ volver: `/productos${location.search}` }}
+                        className="font-medium text-neutral-900 hover:underline"
+                      >
                         {p.model}
                       </Link>
                       <p className="text-xs text-neutral-400">{p.provider}</p>
@@ -295,11 +358,11 @@ const Products = () => {
                       )}
                     </td>
                     <td className="td">
-                      {p.is_active ? (
-                        <Badge tone="green">visible</Badge>
-                      ) : (
-                        <Badge tone="neutral">oculto</Badge>
-                      )}
+                      <SwitchVisible
+                        activo={p.is_active}
+                        ocupado={Boolean(cambiando[p.id])}
+                        onCambiar={(v) => cambiarVisible(p.id, v)}
+                      />
                     </td>
                     <td className="td">
                       <div className="flex justify-end gap-1.5">

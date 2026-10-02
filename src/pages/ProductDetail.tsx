@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { money, dateTime } from "@/lib/format";
 import { getComision, setComision, comisionMonto, gananciaNeta, margenNeto } from "@/lib/comision";
@@ -40,6 +40,9 @@ const Seccion = ({ titulo, desc, children, className = "" }: {
 
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
+  // A dónde vuelve "← Productos": el listado con los filtros con que se entró.
+  // Si se llegó por otro lado (link directo, importador), al listado sin más.
+  const volver = (useLocation().state as { volver?: string } | null)?.volver ?? "/productos";
   const [producto, setProducto] = useState<Product | null>(null);
   const [form, setForm] = useState<Editable | null>(null);
   const [galeria, setGaleria] = useState<ItemGaleria[]>([]);
@@ -171,7 +174,7 @@ const ProductDetail = () => {
 
   return (
     <>
-      <Link to="/productos" className="mb-4 inline-block text-sm text-neutral-500 hover:text-neutral-900">
+      <Link to={volver} className="mb-4 inline-block text-sm text-neutral-500 hover:text-neutral-900">
         ← Productos
       </Link>
 
