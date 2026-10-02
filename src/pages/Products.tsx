@@ -3,7 +3,7 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { money, number } from "@/lib/format";
 import { getComision, gananciaNeta } from "@/lib/comision";
-import { PageTitle, Badge, Empty, Loading, ErrorBox } from "@/components/ui";
+import { PageTitle, Badge, Loading, ErrorBox } from "@/components/ui";
 import type { Product } from "@/lib/types";
 
 const PAGINA = 40;
@@ -78,6 +78,56 @@ const ThOrden = ({
 };
 
 /**
+ * "Para revisar": los casos que en la práctica hay que ir a buscar a mano. Cada
+ * uno es una pregunta concreta sobre la fila, no un rango.
+ */
+const REVISAR = {
+  "a-perdida": {
+    label: "A pérdida",
+    test: (p: Product, c: number) => {
+      const g = gananciaNeta(p.cost, p.effective_price, c);
+      return g != null && g <= 0;
+    },
+  },
+  "sin-costo": { label: "Sin costo cargado", test: (p: Product) => p.cost == null },
+  "sin-foto": { label: "Sin foto", test: (p: Product) => !p.thumbnail },
+  manual: { label: "Precio fijado a mano", test: (p: Product) => p.price_override != null },
+  "caro-meli": {
+    label: "Más caro que en MELI",
+    test: (p: Product) => p.meli_price != null && p.effective_price > p.meli_price,
+  },
+} as const;
+
+type Revisar = keyof typeof REVISAR;
+
+// Un número de la URL: vacío o basura es "sin límite", no cero.
+const leerNumero = (v: string | null) => {
+  if (v == null || v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const InputRango = ({
+  valor,
+  onCambiar,
+  placeholder,
+}: {
+  valor: string;
+  onCambiar: (v: string) => void;
+  placeholder: string;
+}) => (
+  <input
+    type="number"
+    inputMode="numeric"
+    value={valor}
+    onChange={(e) => onCambiar(e.target.value)}
+    placeholder={placeholder}
+    aria-label={placeholder}
+    className="w-full min-w-0 rounded-md border border-neutral-300 bg-white px-2 py-1 text-right text-xs font-normal normal-case tracking-normal text-neutral-700 outline-none placeholder:text-neutral-400 focus:border-primary [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+  />
+);
+
+/**
  * Mostrar u ocultar desde el listado, sin entrar al detalle. Escribe al toque:
  * es un solo campo, se ve el resultado en la fila y se deshace con otro clic.
  */
@@ -125,6 +175,20 @@ const Products = () => {
   const categoria = params.get("cat") ?? "";
   const soloPromo = params.get("promo") === "1";
   const orden = leerOrden(params.get("orden"));
+  // "1" solo visibles, "0" solo ocultos, sin parámetro todos.
+  const visibilidad = params.get("vis");
+  // Un rango por cada columna de plata, en la URL como "price-min=50000".
+  // Mismas claves que el orden: el número que se filtra es el que se ordena y
+  // el que se ve en la columna.
+  const COLUMNAS = Object.keys(ORDENABLES) as Columna[];
+  const rangos = COLUMNAS.map((columna) => ({
+    columna,
+    min: leerNumero(params.get(`${columna}-min`)),
+    max: leerNumero(params.get(`${columna}-max`)),
+  })).filter((r) => r.min != null || r.max != null);
+  const claveRangos = rangos.map((r) => `${r.columna}:${r.min}:${r.max}`).join("|");
+  const revisarParam = params.get("revisar");
+  const revisar = revisarParam && revisarParam in REVISAR ? (revisarParam as Revisar) : null;
 
   // `replace` a propósito: filtrar no es navegar. Sin esto, escribir "ezviz"
   // deja cinco entradas en el historial y el botón atrás deja de servir para
@@ -148,6 +212,23 @@ const Products = () => {
   const setCategoria = (v: string) => setParam("cat", v);
   const setSoloPromo = (v: boolean) => setParam("promo", v ? "1" : null);
   const setOrden = (o: Orden) => setParam("orden", escribirOrden(o));
+
+  // Las claves que son filtro (no el orden): para saber si hay alguno puesto y
+  // poder sacarlos todos de una.
+  const FILTROS = [
+    "q", "cat", "promo", "vis", "revisar",
+    ...COLUMNAS.flatMap((c) => [`${c}-min`, `${c}-max`]),
+  ];
+  const hayFiltros = FILTROS.some((k) => params.has(k));
+  const limpiarFiltros = () =>
+    setParams(
+      (anterior) => {
+        const siguiente = new URLSearchParams(anterior);
+        FILTROS.forEach((k) => siguiente.delete(k));
+        return siguiente;
+      },
+      { replace: true }
+    );
   const [visibles, setVisibles] = useState(PAGINA);
   const [comision] = useState(getComision);
   const [cargando, setCargando] = useState(true);
@@ -181,12 +262,23 @@ const Products = () => {
       // Lo mismo que muestra la tienda en el carrusel de destacados y en
       // /category/promociones: has_promotion + is_active.
       if (soloPromo && !(p.has_promotion && p.is_active)) return false;
+      if (visibilidad === "1" && !p.is_active) return false;
+      if (visibilidad === "0" && p.is_active) return false;
+      // Con un rango puesto, una fila sin el dato (sin costo, por ejemplo) no
+      // entra: no se sabe si cumple. Para encontrarlas está "Sin costo cargado".
+      for (const r of rangos) {
+        const v = ORDENABLES[r.columna](p, comision);
+        if (v == null) return false;
+        if (r.min != null && v < r.min) return false;
+        if (r.max != null && v > r.max) return false;
+      }
+      if (revisar && !REVISAR[revisar].test(p, comision)) return false;
       if (terminos.length === 0) return true;
 
       const texto = `${p.model} ${p.title} ${p.provider ?? ""}`.toLowerCase();
       return terminos.every((t) => texto.includes(t));
     });
-  }, [productos, busqueda, categoria, soloPromo]);
+  }, [productos, busqueda, categoria, soloPromo, visibilidad, claveRangos, revisar, comision]);
 
   // El orden se aplica sobre lo filtrado, así que ordenar y filtrar se
   // combinan: "las 40 de mayor ganancia dentro de Kits" es dos clics.
@@ -212,7 +304,10 @@ const Products = () => {
     });
   }, [filtrados, orden, comision]);
 
-  useEffect(() => setVisibles(PAGINA), [busqueda, categoria, soloPromo]);
+  useEffect(
+    () => setVisibles(PAGINA),
+    [busqueda, categoria, soloPromo, visibilidad, claveRangos, revisar]
+  );
 
   // Optimista: la fila cambia ya y, si la base lo rechaza, vuelve atrás.
   const cambiarVisible = async (id: string, visible: boolean) => {
@@ -263,11 +358,21 @@ const Products = () => {
         <select
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
-          className="input max-w-[11rem]"
+          className="input w-auto"
         >
           <option value="">Todas las categorías</option>
           {categorias.map((c) => (
             <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <select
+          value={revisar ?? ""}
+          onChange={(e) => setParam("revisar", e.target.value || null)}
+          className="input w-auto"
+        >
+          <option value="">Para revisar…</option>
+          {(Object.keys(REVISAR) as Revisar[]).map((k) => (
+            <option key={k} value={k}>{REVISAR[k].label}</option>
           ))}
         </select>
         <label
@@ -282,12 +387,21 @@ const Products = () => {
           />
           Solo en promoción
         </label>
+
+        {hayFiltros && (
+          <button
+            onClick={limpiarFiltros}
+            className="text-sm text-neutral-500 transition hover:text-neutral-900"
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
-      {ordenados.length === 0 ? (
-        <Empty>No hay productos que coincidan.</Empty>
-      ) : (
-        <div className="card overflow-hidden">
+      {/* La tabla se dibuja siempre, aunque no haya resultados: los filtros de
+          columna viven en el encabezado, y si desaparece con la tabla no hay
+          forma de corregir el número que dejó la lista vacía. */}
+      <div className="card overflow-hidden">
           <table className="w-full">
             <thead className="border-b border-neutral-200 bg-neutral-50">
               <tr>
@@ -306,8 +420,49 @@ const Products = () => {
                 <th className="th">Visible</th>
                 <th className="th"></th>
               </tr>
+              {/* Rango por columna. Solo mínimo es "mayor a", solo máximo es
+                  "menor a", los dos es un rango. */}
+              <tr>
+                <th className="px-4 pb-2.5" colSpan={3} />
+                {COLUMNAS.map((c) => (
+                  <th key={c} className="px-4 pb-2.5">
+                    <div className="ml-auto flex w-36 items-center gap-1">
+                      <InputRango
+                        valor={params.get(`${c}-min`) ?? ""}
+                        onCambiar={(v) => setParam(`${c}-min`, v || null)}
+                        placeholder="mín"
+                      />
+                      <InputRango
+                        valor={params.get(`${c}-max`) ?? ""}
+                        onCambiar={(v) => setParam(`${c}-max`, v || null)}
+                        placeholder="máx"
+                      />
+                    </div>
+                  </th>
+                ))}
+                <th className="px-4 pb-2.5">
+                  <select
+                    value={visibilidad ?? ""}
+                    onChange={(e) => setParam("vis", e.target.value || null)}
+                    aria-label="Filtrar por visibilidad"
+                    className="rounded-md border border-neutral-300 bg-white px-1.5 py-1 text-xs font-normal normal-case tracking-normal text-neutral-700 outline-none focus:border-primary"
+                  >
+                    <option value="">Todos</option>
+                    <option value="1">Visibles</option>
+                    <option value="0">Ocultos</option>
+                  </select>
+                </th>
+                <th className="px-4 pb-2.5" />
+              </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
+              {ordenados.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-16 text-center text-sm text-neutral-500">
+                    No hay productos que coincidan.
+                  </td>
+                </tr>
+              )}
               {ordenados.slice(0, visibles).map((p) => {
                 const ganancia = gananciaNeta(p.cost, p.effective_price, comision);
 
@@ -394,8 +549,7 @@ const Products = () => {
               </button>
             </div>
           )}
-        </div>
-      )}
+      </div>
     </>
   );
 };
