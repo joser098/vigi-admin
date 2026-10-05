@@ -40,6 +40,10 @@ const C = {
   fondo: "#f5f5f7",
   oferta: "#b9711a",
   ofertaSuave: "#fdf3e3",
+  // Solo para las fechas especiales (Día de la Madre). La marca sigue siendo
+  // el violeta: el rosa acompaña, no reemplaza.
+  rosa: "#b8345f",
+  rosaSuave: "#fcedf2",
 };
 
 const FUENTE =
@@ -68,7 +72,7 @@ export type ProductoMail = Pick<
   "model" | "title" | "thumbnail" | "price" | "effective_price" | "discount" | "has_promotion"
 >;
 
-export type PlantillaId = "grilla" | "destacado" | "ofertas";
+export type PlantillaId = "grilla" | "destacado" | "ofertas" | "madres";
 
 /**
  * El cupón de la campaña, tal como está en la base.
@@ -402,7 +406,52 @@ const armazon = (a: Ajustes, cuerpo: string) => `<!DOCTYPE html PUBLIC "-//W3C//
 </html>`;
 
 // ---------------------------------------------------------------------------
-// Las tres plantillas
+// Fechas especiales
+// ---------------------------------------------------------------------------
+
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+/**
+ * El Día de la Madre en Argentina: tercer domingo de octubre.
+ *
+ * Se calcula y no se escribe a mano para que la plantilla sirva el año que
+ * viene sin tocarla. Si la fecha de este año ya pasó, devuelve la del próximo.
+ */
+const diaDeLaMadre = (hoy = new Date()) => {
+  const para = (anio: number) => {
+    const primero = new Date(anio, 9, 1);
+    const primerDomingo = 1 + ((7 - primero.getDay()) % 7);
+    return new Date(anio, 9, primerDomingo + 14);
+  };
+
+  const inicioDeHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const esteAnio = para(hoy.getFullYear());
+  return esteAnio >= inicioDeHoy ? esteAnio : para(hoy.getFullYear() + 1);
+};
+
+const MADRE = diaDeLaMadre();
+const MADRE_TEXTO = `domingo ${MADRE.getDate()} de ${MESES[MADRE.getMonth()]}`;
+
+/** La franja rosa con la fecha, arriba de los productos. */
+const franjaFecha = (etiqueta: string, texto: string) => `
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:22px">
+  <tr>
+    <td align="center" bgcolor="${C.rosaSuave}" style="padding:16px;border-radius:14px">
+      <p style="margin:0 0 4px;font-family:${FUENTE};font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${C.rosa}">
+        ${esc(etiqueta)}
+      </p>
+      <p style="margin:0;font-family:${FUENTE};font-size:14px;line-height:1.5;color:${C.tinta}">
+        ${esc(texto)}
+      </p>
+    </td>
+  </tr>
+</table>`;
+
+// ---------------------------------------------------------------------------
+// Las plantillas
 // ---------------------------------------------------------------------------
 
 export const PLANTILLAS: Record<
@@ -512,6 +561,36 @@ ${productos.map((x) => fila(x, a)).join("")}
 </table>`
       ),
   },
+
+  madres: {
+    nombre: "Día de la Madre",
+    descripcion: "Franja con la fecha, grilla de regalos y aviso de despacho.",
+    ideal: `Campaña del ${MADRE_TEXTO}. Mandala con una o dos semanas de margen.`,
+    sugerido: {
+      preheader: `El ${MADRE_TEXTO} es el Día de la Madre. Un regalo que la acompaña todo el año.`,
+      titulo: "Un regalo para que esté tranquila",
+      bajada:
+        "Para ver a las mascotas, a los chicos o la casa desde el teléfono, esté donde esté. La cámara es suya desde el día uno: sin abono y sin contrato.",
+      cta: "Elegir su regalo",
+      utm: `dia-de-la-madre-${MADRE.getFullYear()}`,
+      cupon: null,
+    },
+    armar: (productos, a) =>
+      armazon(
+        a,
+        `
+${franjaFecha("Día de la Madre", `Este ${MADRE_TEXTO}, regalale tranquilidad.`)}
+${grilla(productos, a)}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+  <tr><td align="center" style="padding-top:12px">${boton(a.cta, conUtm(SITIO, a, "cta"))}</td></tr>
+  <tr>
+    <td align="center" style="padding-top:14px;font-family:${FUENTE};font-size:13px;line-height:1.5;color:${C.suave}">
+      Comprás antes de las 17:00 y sale el mismo día. Pedilo con tiempo para que llegue antes del domingo.
+    </td>
+  </tr>
+</table>`
+      ),
+  },
 };
 
-export const ORDEN_PLANTILLAS: PlantillaId[] = ["grilla", "destacado", "ofertas"];
+export const ORDEN_PLANTILLAS: PlantillaId[] = ["grilla", "destacado", "ofertas", "madres"];
