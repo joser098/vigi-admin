@@ -393,8 +393,14 @@ const EmailMarketing = () => {
     // quedarse con el título de la anterior deja el mail descolgado. La
     // etiqueta de campaña y el cupón sí se conservan — no dependen de cómo se
     // vea el mail, y volver a elegirlos en cada prueba de plantilla es la
-    // clase de paso que se olvida.
-    setAjustes((a) => ({ ...PLANTILLAS[id].sugerido, utm: a.utm, cupon: a.cupon }));
+    // clase de paso que se olvida. La etiqueta se conserva solo si alguien la
+    // escribió: si sigue siendo la sugerida de la plantilla anterior, toma la
+    // de la nueva (si no, "Día de la Madre" saldría etiquetado "novedades").
+    setAjustes((a) => ({
+      ...PLANTILLAS[id].sugerido,
+      utm: a.utm === PLANTILLAS[plantilla].sugerido.utm ? PLANTILLAS[id].sugerido.utm : a.utm,
+      cupon: a.cupon,
+    }));
   };
 
   const elegirCupon = (id: string) => {
