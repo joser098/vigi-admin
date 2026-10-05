@@ -62,8 +62,8 @@ const TANDA = LIMITE_DIARIO;
 
 // "Vigi" y no vacío: sin nombre de remitente, la bandeja muestra la parte de
 // antes del arroba de la dirección —"marketing"—, que no le dice nada a nadie.
-// `segment` vacío = todos los suscriptos.
-const VACIA = { name: "", subject: "", from_name: "Vigi", html: "", segment: "" };
+// `segment` y `list` vacíos = todos los suscriptos de la lista general.
+const VACIA = { name: "", subject: "", from_name: "Vigi", html: "", segment: "", list: "" };
 
 // Más de esto en un mail no se lee, y la grilla se vuelve un catálogo.
 const MAX_PRODUCTOS = 8;
@@ -124,6 +124,8 @@ const EmailMarketing = () => {
 
   // --- Contactos ------------------------------------------------------------
   const [nuevos, setNuevos] = useState("");
+  const [listaNueva, setListaNueva] = useState("");
+  const [filtroLista, setFiltroLista] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [agregando, setAgregando] = useState(false);
 
@@ -220,11 +222,21 @@ const EmailMarketing = () => {
 
   const suscriptos = useMemo(() => contactos.filter((c) => c.is_subscribed), [contactos]);
 
-  // A quién le llega una campaña: todos los suscriptos, o los del segmento.
-  const audiencia = (segmento: string | null | undefined) =>
+  // Las listas que existen, sacadas de los contactos: una lista sin nadie no
+  // existe.
+  const listas = useMemo(
+    () => [...new Set(contactos.flatMap((c) => c.lists ?? []))].sort((a, b) => a.localeCompare(b)),
+    [contactos]
+  );
+
+  // A quién le llega una campaña. Igual que en marketing-send: un segmento,
+  // una lista, o la lista general (sin los que entraron solo por una lista).
+  const audiencia = (segmento: string | null | undefined, lista?: string | null) =>
     segmento
       ? suscriptos.filter((c) => porSegmento[segmento]?.has(c.email.toLowerCase()))
-      : suscriptos;
+      : lista
+        ? suscriptos.filter((c) => c.lists?.includes(lista))
+        : suscriptos.filter((c) => c.in_general !== false);
 
   // Desde Clientes se llega con ?segmento=…: arranca una campaña nueva para
   // ese segmento.
@@ -260,6 +272,7 @@ const EmailMarketing = () => {
       from_name: c.from_name ?? "",
       html: c.html,
       segment: c.segment ?? "",
+      list: c.list ?? "",
     });
     setEditandoId(c.id);
     setPruebaHecha(false);
@@ -283,6 +296,7 @@ const EmailMarketing = () => {
       from_name: form.from_name.trim() || null,
       html: form.html,
       segment: form.segment || null,
+      list: form.segment ? null : form.list || null,
     };
 
     const { data, error } = editandoId
@@ -342,8 +356,10 @@ const EmailMarketing = () => {
   // a los que todavía no la recibieron, así que se puede seguir mañana sin que
   // nadie la reciba dos veces.
   const yaRecibieron = editandoId ? (alcanzados[editandoId] ?? new Set<string>()) : new Set<string>();
-  const pendientes = audiencia(form.segment).filter((c) => !yaRecibieron.has(c.email.toLowerCase()));
-  const alcanzadosCount = audiencia(form.segment).length - pendientes.length;
+  const pendientes = audiencia(form.segment, form.list).filter(
+    (c) => !yaRecibieron.has(c.email.toLowerCase())
+  );
+  const alcanzadosCount = audiencia(form.segment, form.list).length - pendientes.length;
   const hoy = uso.unitpostHoy + uso.resendHoy;
   const libreUnitpost = Math.max(
     0,
@@ -367,7 +383,11 @@ const EmailMarketing = () => {
     // dice los números exactos justamente para que se lean.
     const ok = window.confirm(
       `Vas a enviar "${form.subject}" a ${vanAhora} contactos` +
-        (esSegmento(form.segment) ? ` del segmento ${SEGMENTOS[form.segment].label}` : "") +
+        (esSegmento(form.segment)
+          ? ` del segmento ${SEGMENTOS[form.segment].label}`
+          : form.list
+            ? ` de la lista "${form.list}"`
+            : "") +
         `.\n\n` +
         `Después de esta tanda quedan ${pendientes.length - vanAhora} pendientes.\n` +
         `Esto no se puede deshacer. ¿Seguimos?`
@@ -496,21 +516,46 @@ const EmailMarketing = () => {
 
     setAgregando(true);
 
-    // `upsert` con ignoreDuplicates: volver a pegar una lista que ya tenías no
-    // pisa nada ni resucita a quien se dio de baja.
-    const { error } = await supabase
-      .from("marketing_contacts")
-      .upsert(
-        emails.map((email) => ({ email, source: "manual" })),
-        { onConflict: "email", ignoreDuplicates: true }
-      );
+    // Por función y no por upsert: a los que ya existen hay que sumarles la
+    // lista sin pisar las que tenían. Volver a pegar una lista que ya tenías
+    // no pisa nada ni resucita a quien se dio de baja (ver migración 0027).
+    const lista = listaNueva.trim();
+    const { data, error } = await supabase.rpc("marketing_add_contacts", {
+      p_emails: emails,
+      p_list: lista || null,
+    });
 
     setAgregando(false);
 
     if (error) return setError(error.message);
 
+    const r = (Array.isArray(data) ? data[0] : data) as { inserted: number; tagged: number } | null;
+    const nuevosN = r?.inserted ?? 0;
+    const sumados = r?.tagged ?? 0;
+    const ya = emails.length - nuevosN - sumados;
+
     setNuevos("");
-    setAviso(`${emails.length} ${emails.length === 1 ? "email procesado" : "emails procesados"}.`);
+    setAviso(
+      lista
+        ? `Lista "${lista}": ${nuevosN} nuevos, ${sumados} que ya tenías sumados a la lista` +
+            (ya > 0 ? `, ${ya} ya estaban en ella.` : ".")
+        : `${nuevosN} nuevos` + (emails.length - nuevosN > 0 ? `, ${emails.length - nuevosN} ya estaban.` : ".")
+    );
+    if (lista) setFiltroLista(lista);
+    await cargar();
+  };
+
+  // Sacar a alguien de una lista. Si se queda sin listas y no estaba en la
+  // general, vuelve a la general: si no, no le llegaría ninguna campaña y
+  // nadie lo vería.
+  const quitarDeLista = async (c: MarketingContact, lista: string) => {
+    const restantes = (c.lists ?? []).filter((l) => l !== lista);
+    const { error } = await supabase
+      .from("marketing_contacts")
+      .update({ lists: restantes, in_general: c.in_general || restantes.length === 0 })
+      .eq("id", c.id);
+
+    if (error) return setError(error.message);
     await cargar();
   };
 
@@ -529,10 +574,16 @@ const EmailMarketing = () => {
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return contactos;
+    const base =
+      filtroLista === "__general"
+        ? contactos.filter((c) => c.in_general !== false)
+        : filtroLista
+          ? contactos.filter((c) => c.lists?.includes(filtroLista))
+          : contactos;
+    if (!q) return base;
 
-    return contactos.filter((c) => `${c.email} ${c.name ?? ""}`.toLowerCase().includes(q));
-  }, [contactos, busqueda]);
+    return base.filter((c) => `${c.email} ${c.name ?? ""}`.toLowerCase().includes(q));
+  }, [contactos, busqueda, filtroLista]);
 
   if (cargando) return <Loading />;
 
@@ -650,21 +701,41 @@ const EmailMarketing = () => {
               </div>
               <div className="sm:col-span-2">
                 <label className="label">A quién</label>
+                {/* Un solo select para tres destinos: el valor lleva el tipo
+                    adelante ("seg:" o "lista:") y se separa al elegir. */}
                 <select
-                  value={form.segment}
-                  onChange={(e) => set("segment", e.target.value)}
+                  value={form.segment ? `seg:${form.segment}` : form.list ? `lista:${form.list}` : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    set("segment", v.startsWith("seg:") ? v.slice(4) : "");
+                    set("list", v.startsWith("lista:") ? v.slice(6) : "");
+                  }}
                   className="input"
                 >
-                  <option value="">Todos los suscriptos ({number(suscriptos.length)})</option>
-                  {SEGMENTO_IDS.map((sg) => (
-                    <option key={sg} value={sg}>
-                      {SEGMENTOS[sg].label} ({number(audiencia(sg).length)}) — {SEGMENTOS[sg].descripcion}
-                    </option>
-                  ))}
+                  <option value="">Todos los suscriptos ({number(audiencia(null).length)})</option>
+                  {listas.length > 0 && (
+                    <optgroup label="Listas">
+                      {listas.map((l) => (
+                        <option key={l} value={`lista:${l}`}>
+                          {l} ({number(audiencia(null, l).length)})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Segmentos de clientes">
+                    {SEGMENTO_IDS.map((sg) => (
+                      <option key={sg} value={`seg:${sg}`}>
+                        {SEGMENTOS[sg].label} ({number(audiencia(sg).length)}) — {SEGMENTOS[sg].descripcion}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
                 <p className="mt-1 text-xs text-neutral-400">
-                  El segmento se recalcula en cada tanda: si alguien compra entre una tanda y otra
-                  y sale del segmento, no la recibe.
+                  {form.list
+                    ? "Solo los suscriptos de esa lista."
+                    : form.segment
+                      ? "El segmento se recalcula en cada tanda: si alguien compra entre una tanda y otra y sale del segmento, no la recibe."
+                      : "Los que cargaste solo en una lista no la reciben: para eso está su lista."}
                 </p>
               </div>
               <div className="sm:col-span-2">
@@ -844,7 +915,7 @@ const EmailMarketing = () => {
                     const faltan =
                       c.status === "sent"
                         ? 0
-                        : audiencia(c.segment).filter(
+                        : audiencia(c.segment, c.list).filter(
                             (s) => !(alcanzados[c.id] ?? new Set()).has(s.email.toLowerCase())
                           ).length;
 
@@ -1170,12 +1241,35 @@ const EmailMarketing = () => {
               className="input mt-4 font-mono text-xs"
             />
 
+            <label className="label mt-4">Lista (opcional)</label>
+            <input
+              value={listaNueva}
+              onChange={(e) => setListaNueva(e.target.value)}
+              list="listas-existentes"
+              placeholder="Día de la Madre"
+              className="input"
+            />
+            <datalist id="listas-existentes">
+              {listas.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+            <p className="mt-1 text-xs text-neutral-400">
+              {listaNueva.trim()
+                ? "Los nuevos quedan solo en esta lista: no reciben las campañas a todos. Los que ya tenías se suman a la lista y siguen en la general."
+                : "Sin lista, entran a la lista general."}
+            </p>
+
             <button
               onClick={agregarContactos}
               disabled={agregando || !nuevos.trim()}
               className="btn-primary mt-3 w-full"
             >
-              {agregando ? "Agregando…" : "Agregar a la lista"}
+              {agregando
+                ? "Agregando…"
+                : listaNueva.trim()
+                  ? `Agregar a "${listaNueva.trim()}"`
+                  : "Agregar a la lista general"}
             </button>
           </section>
 
@@ -1184,12 +1278,27 @@ const EmailMarketing = () => {
               <h2 className="text-sm font-medium">
                 Lista <span className="text-neutral-400">({number(contactos.length)})</span>
               </h2>
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar…"
-                className="input max-w-[14rem]"
-              />
+              <div className="flex gap-2">
+                <select
+                  value={filtroLista}
+                  onChange={(e) => setFiltroLista(e.target.value)}
+                  className="input max-w-[12rem]"
+                >
+                  <option value="">Todos los contactos</option>
+                  <option value="__general">Lista general</option>
+                  {listas.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar…"
+                  className="input max-w-[14rem]"
+                />
+              </div>
             </div>
 
             {filtrados.length === 0 ? (
@@ -1202,6 +1311,7 @@ const EmailMarketing = () => {
                   <thead className="sticky top-0 border-y border-neutral-200 bg-neutral-50">
                     <tr>
                       <th className="th">Email</th>
+                      <th className="th">Listas</th>
                       <th className="th">Origen</th>
                       <th className="th">Estado</th>
                       <th className="th"></th>
@@ -1213,6 +1323,26 @@ const EmailMarketing = () => {
                         <td className="td">
                           {c.email}
                           {c.name && <p className="text-xs text-neutral-400">{c.name}</p>}
+                        </td>
+                        <td className="td">
+                          <div className="flex flex-wrap gap-1">
+                            {c.in_general !== false && <Badge tone="neutral">general</Badge>}
+                            {(c.lists ?? []).map((l) => (
+                              <span
+                                key={l}
+                                className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700"
+                              >
+                                {l}
+                                <button
+                                  onClick={() => quitarDeLista(c, l)}
+                                  title={`Sacar de "${l}"`}
+                                  className="text-violet-400 hover:text-violet-900"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
                         </td>
                         <td className="td text-neutral-500">{c.source}</td>
                         <td className="td">

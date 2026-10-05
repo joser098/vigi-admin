@@ -173,6 +173,10 @@ export type MarketingContact = {
   source: string;
   is_subscribed: boolean;
   unsubscribed_at: string | null;
+  // Listas armadas a mano (migración 0027 de vigi-api).
+  lists: string[];
+  // false = entró solo por una lista y no recibe las campañas a "Todos".
+  in_general: boolean;
   created_at: string;
 };
 
@@ -185,6 +189,8 @@ export type MarketingCampaign = {
   status: "draft" | "sending" | "sent" | "failed";
   // NULL = todos los suscriptos. Ver lib/segmentos.ts.
   segment: SegmentoId | null;
+  // Lista armada a mano. Excluyente con `segment`.
+  list: string | null;
   sent_at: string | null;
   sent_count: number;
   failed_count: number;
