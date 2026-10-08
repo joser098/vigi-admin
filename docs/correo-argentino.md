@@ -116,12 +116,14 @@ Y Jujuy · Z Santa Cruz
    sus medidas propias si las tiene; si no, el perfil de caja de su categoría.
    Consolidación en bultos: HECHO (`vigi-api/src/services/bulto.js`).
    Se usan las cajas de los perfiles, no las medidas del producto (solo su
-   peso, si lo tiene). **Falta asignar perfiles**: al 2026-10-08 ninguna
-   categoría tiene, así que todo cotiza "Estándar".
+   peso, si lo tiene). Perfiles asignados a las 10 categorías el 2026-10-08,
+   con medidas estimadas: ajustar con cajas reales en `/envios`.
 3. ~~Cotización~~ — HECHO: `services/micorreo.js` + `services/shipping.js`
    en `vigi-api`.
 4. ~~UI~~ — HECHO: `vigi-app/src/components/OrderResume.tsx`, con selector de
    sucursal (`GET /api/logistic/agencies`, adelantado de la fase 2).
    El panel muestra forma de entrega y sucursal en el detalle y la etiqueta.
-5. Fase 2: importar envíos (`/shipping/import`) desde el admin, con
+5. "Acordar envío": el cliente escribe por WhatsApp (Kapso, flujo
+   `vigi-acordar`) con su número de pedido y se le pasa a una persona.
+6. Fase 2: importar envíos (`/shipping/import`) desde el admin, con
    `declaredValue` = total de la orden.
