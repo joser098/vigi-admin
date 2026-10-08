@@ -62,6 +62,9 @@ export const Etiqueta = ({ orden, cliente }: { orden: Order; cliente: Customer |
   }, [orden.payment_id]);
 
   const d = cliente?.addresses?.[0];
+  // Retiro en sucursal: el paquete va a la sucursal de Correo, no a la casa.
+  const sucursal = orden.delivery_type === "S" ? orden.shipping_agency : null;
+  const cp = sucursal ? sucursal.postal_code?.match(/\d{4}/)?.[0] : d?.zip_code;
   const articulos = (orden.order_items ?? []).reduce((t, i) => t + i.quantity, 0);
   const fecha = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
@@ -88,7 +91,18 @@ export const Etiqueta = ({ orden, cliente }: { orden: Order; cliente: Customer |
           {cliente ? `${cliente.name} ${cliente.last_name}` : "—"}
         </p>
 
-        {d ? (
+        {sucursal ? (
+          <div className="mt-[2mm] text-[11pt] leading-snug">
+            <p className="text-[9pt] font-black uppercase">Retira en sucursal Correo Argentino</p>
+            <p className="font-bold">
+              {sucursal.name} ({sucursal.code})
+            </p>
+            <p>{sucursal.address}</p>
+            <p>
+              {sucursal.locality}, {sucursal.province}
+            </p>
+          </div>
+        ) : d ? (
           <div className="mt-[2mm] text-[11pt] leading-snug">
             <p className="font-bold">
               {d.address_name} {d.address_number}
@@ -104,10 +118,10 @@ export const Etiqueta = ({ orden, cliente }: { orden: Order; cliente: Customer |
         {/* Sin teléfono ni DNI del cliente: la etiqueta la ve cualquiera que
             toque el paquete, y el correo no los necesita para entregar. */}
         <div className="mt-[3mm] flex justify-end">
-          {d?.zip_code && (
+          {cp && (
             <div className="rounded-[1.5mm] bg-black px-[3mm] py-[1.5mm] text-center text-white">
               <p className="text-[6.5pt] font-bold leading-none">CP</p>
-              <p className="text-[18pt] font-black leading-none">{d.zip_code}</p>
+              <p className="text-[18pt] font-black leading-none">{cp}</p>
             </div>
           )}
         </div>

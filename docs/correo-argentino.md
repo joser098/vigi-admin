@@ -1,7 +1,14 @@
-# Integración Correo Argentino (API MiCorreo) — PENDIENTE
+# Integración Correo Argentino (API MiCorreo) — EN CURSO
 
-Estado (2026-10-01): **esperando credenciales**. Ya se envió el formulario a
-Correo. Cuando lleguen, retomar desde "Plan".
+Estado (2026-10-08): credenciales de **producción** recibidas y cargadas en
+`vigi-api/.env`; `/token` probado OK, `customerId` cargado, `/rates` probado OK. Implementado en
+`vigi-api`, `vigi-app` y este panel (ver "Plan"); **falta aplicar la migración
+0028 y deployar**. Decisiones: solo servicio Clásico; Correo reemplaza a
+Andreani; gratis todo en CABA, y fuera de CABA solo sucursal desde $450.000;
+el cliente elige la sucursal en el checkout; bulto = caja del perfil de la
+categoría (peso del producto si lo tiene); tercera opción "acordar envío" (no
+se cobra, se coordina después) para no perder ventas, también como salida si
+Correo no cotiza.
 
 Doc oficial: `apiMiCorreo.pdf` (versión 8/8/2022, quedó en Downloads del dueño).
 Abajo está todo lo necesario para no depender del PDF.
@@ -23,7 +30,10 @@ Credenciales distintas por ambiente.
 
 ### Auth
 `POST /token` con HTTP Basic (`user:password`) →
-`{ "token": "<JWT>", "expires": "2022-04-26 21:16:20" }`.
+`{ "token": "<JWT>", "expire": "2026-10-08 16:32:19" }` (dura ~1 h).
+**Ojo:** en la práctica el campo es `expire`, no `expires` como dice el PDF.
+El servidor cortó una vez una conexión HTTP/2 (`curl` error 92); con
+HTTP/1.1 anda bien.
 Resto de endpoints: `Authorization: Bearer <token>`. Cachear el token hasta
 `expires` y renovarlo ante un 401.
 
@@ -59,6 +69,14 @@ Respuesta:
 ```
 El precio vence en `validTo`: si se guarda en un pedido, guardar también eso.
 
+**Respuesta real (prod, 2026-10-08)** — difiere del PDF:
+- Status **202**, no 200: tratar todo 2xx como éxito.
+- Vienen **4 tarifas**: Clásico (`CP`, 2–5 días) y Expreso (`EP`, 1–3 días),
+  cada una para `D` y `S`. Traen `deliveryTimeMin`/`deliveryTimeMax` (strings).
+- Ejemplo 1 kg, 30×20×10, desde 1406: a 1704 → S/CP $5.428, S/EP $5.969,
+  D/CP $8.046, D/EP $8.853. A 5000 → S/CP $6.739, S/EP $9.271, D/CP $9.648,
+  D/EP $13.263.
+
 ### Otros endpoints (fase 2)
 - `GET /agencies?customerId=&provinceCode=` — sucursales de una provincia
   (código, dirección, lat/long, horarios). Para que el cliente elija sucursal.
@@ -89,16 +107,21 @@ Y Jujuy · Z Santa Cruz
 
 ## Plan
 
-1. Probar en QA con curl: `/token` → `/users/validate` → `/rates`.
+1. ~~Probar `/token` → `/rates`~~ — HECHO en prod (el `customerId` lo pasó
+   el dueño, no hizo falta `/users/validate`). Ojo: ante ráfagas de pedidos
+   Imperva bloquea la IP ~2 minutos (ECONNRESET), y además resetea alguna
+   conexión suelta: el cliente reintenta.
 2. **Datos de productos** — HECHO (migración 0023 de `vigi-api`, página
    `/envios` y sección "Envío" del detalle de producto). Bulto del producto =
    sus medidas propias si las tiene; si no, el perfil de caja de su categoría.
-   Falta, al cotizar: consolidar pedidos con varios ítems en un bulto (sumar
-   pesos, elegir caja). Esto sirve igual para Andreani (lo actual) que para
-   Correo: la decisión de con cuál se implementa primero quedó abierta.
-3. Función `cotizar-envio`: recibe CP destino + ítems, arma el bulto, usa el
-   token cacheado, llama a `/rates` y devuelve
-   `{ domicilio, sucursal, validTo }`.
-4. UI: mostrar las dos opciones y destacar que sucursal es más barato.
-5. Fase 2: selector de sucursal (`/agencies`) e importar envíos
-   (`/shipping/import`) desde el admin.
+   Consolidación en bultos: HECHO (`vigi-api/src/services/bulto.js`).
+   Se usan las cajas de los perfiles, no las medidas del producto (solo su
+   peso, si lo tiene). **Falta asignar perfiles**: al 2026-10-08 ninguna
+   categoría tiene, así que todo cotiza "Estándar".
+3. ~~Cotización~~ — HECHO: `services/micorreo.js` + `services/shipping.js`
+   en `vigi-api`.
+4. ~~UI~~ — HECHO: `vigi-app/src/components/OrderResume.tsx`, con selector de
+   sucursal (`GET /api/logistic/agencies`, adelantado de la fase 2).
+   El panel muestra forma de entrega y sucursal en el detalle y la etiqueta.
+5. Fase 2: importar envíos (`/shipping/import`) desde el admin, con
+   `declaredValue` = total de la orden.

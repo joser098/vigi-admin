@@ -72,9 +72,26 @@ export type Order = {
   carrier: string | null;
   tracking_number: string | null;
   tracking_url: string | null;
+  // Correo Argentino (migración 0028 de vigi-api). NULL en órdenes anteriores.
+  // D = Correo a domicilio, S = Correo a sucursal, A = acordar con el cliente.
+  delivery_type: "D" | "S" | "A" | null;
+  shipping_agency: CorreoAgency | null;
+  shipping_cost: number | null;
   created_at: string;
   order_items?: OrderItem[];
   customers?: Customer | null;
+};
+
+/** Sucursal de Correo Argentino elegida para el retiro, tal como la guardó la API. */
+export type CorreoAgency = {
+  code: string;
+  name: string;
+  address: string;
+  locality: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+  phone: string | null;
 };
 
 export type Customer = {

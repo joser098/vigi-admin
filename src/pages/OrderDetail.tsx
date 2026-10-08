@@ -73,7 +73,9 @@ const OrderDetail = () => {
   const direccion = cliente?.addresses?.[0];
   const items = orden.order_items ?? [];
   const subtotal = items.reduce((s, i) => s + Number(i.unit_price) * i.quantity, 0);
-  const envio = Number(orden.amount_paid) - subtotal;
+  // Las órdenes desde la 0028 guardan lo que se cobró de envío; las viejas lo
+  // deducen del total.
+  const envio = orden.shipping_cost ?? Number(orden.amount_paid) - subtotal;
 
   return (
     <>
@@ -205,7 +207,36 @@ const OrderDetail = () => {
 
           <section className="card p-5">
             <h2 className="mb-4 text-sm font-medium">Envío</h2>
-            {direccion ? (
+            {orden.delivery_type === "A" ? (
+              <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                Envío a acordar: no se cobró. Contactar al cliente para coordinar
+                la entrega.
+              </p>
+            ) : orden.delivery_type ? (
+              <p className="mb-3 text-sm font-medium">
+                Correo Argentino ·{" "}
+                {orden.delivery_type === "S" ? "retiro en sucursal" : "a domicilio"}
+                <span className="font-normal text-neutral-400">
+                  {" "}· {Number(orden.shipping_cost) > 0 ? money(Number(orden.shipping_cost)) : "gratis"}
+                </span>
+              </p>
+            ) : null}
+            {orden.delivery_type === "S" && orden.shipping_agency ? (
+              <p className="text-sm leading-relaxed text-neutral-700">
+                <span className="font-medium">{orden.shipping_agency.name}</span>{" "}
+                <span className="text-neutral-400">({orden.shipping_agency.code})</span>
+                <br />
+                {orden.shipping_agency.address}
+                <br />
+                {orden.shipping_agency.locality}, {orden.shipping_agency.province}
+                {orden.shipping_agency.phone && (
+                  <>
+                    <br />
+                    <span className="text-neutral-400">Tel. {orden.shipping_agency.phone}</span>
+                  </>
+                )}
+              </p>
+            ) : direccion ? (
               <p className="text-sm leading-relaxed text-neutral-700">
                 {direccion.address_name} {direccion.address_number}
                 {direccion.department ? ` ${direccion.department}` : ""}
