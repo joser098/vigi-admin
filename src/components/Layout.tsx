@@ -147,6 +147,7 @@ const grupos: Array<{ titulo: string | null; items: Item[] }> = [
       { to: "/pagos", label: "Pagos", icono: I.pagos },
       { to: "/clientes", label: "Clientes", icono: I.clientes },
       { to: "/carritos", label: "Carritos", icono: I.carritos },
+      { to: "/presupuestar", label: "Presupuestar", icono: I.pagos },
     ],
   },
   {
